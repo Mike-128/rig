@@ -224,3 +224,28 @@ describe("conversational agent creation", () => {
     expect(bad.issues.some((i) => /load_skill/.test(i.message))).toBe(true);
   });
 });
+
+describe("default alias selection", () => {
+  it("prefers a generally available chat model over a preview one", async () => {
+    // Preview models carry much tighter quota, so auto-binding one makes the seeded agents fail
+    // with 429s on their first real use.
+    const conn = await api<{ connection: { id: string } }>("/connections", { method: "POST", json: { name: "picks", profileId: "mock-gateway", key: GOOD_KEY } });
+    const id = conn.connection.id;
+    for (const m of [
+      { id: "mock-embed-002", dialect: "openai.chat", route: "/v1/chat/completions" },
+      { id: "mock-flash-preview", dialect: "openai.chat", route: "/v1/chat/completions" },
+      { id: "mock-flash", dialect: "openai.chat", route: "/v1/chat/completions" },
+    ]) {
+      await api(`/connections/${id}/models`, { method: "POST", json: m });
+    }
+    await api("/aliases/default", { method: "DELETE" });
+    const res = await api<{ boundDefault?: { modelId: string } }>(`/connections/${id}/probe`, { method: "POST" });
+    expect(res.boundDefault?.modelId).toBe("mock-claude");
+
+    // With only the manual models entitled, the stable one wins over preview, and embeddings are skipped.
+    await api(`/aliases/default`, { method: "DELETE" });
+    await api(`/models/${id}/mock-claude`, { method: "DELETE" });
+    const second = await api<{ boundDefault?: { modelId: string } }>(`/connections/${id}/probe`, { method: "POST" });
+    expect(second.boundDefault?.modelId).toBe("mock-flash");
+  });
+});

@@ -83,7 +83,8 @@ describe("v1 definition of done", () => {
     expect(created.models).toHaveLength(3);
 
     const probed = await api<{ models: Model[]; listed: number; boundDefault?: { modelId: string } }>(`/connections/${connId}/probe`, { method: "POST" });
-    // With no alias set, probing binds "default" to an entitled chat model so seeded agents work immediately.
+    // With no alias set, probing binds "default" to an entitled chat model so seeded agents work
+    // immediately. Curated catalog entries win over discovered ones, and "mock-gpt-extra" is only listed.
     expect(probed.boundDefault?.modelId).toBe("mock-claude");
     expect((await api<{ alias: string }[]>("/aliases")).map((a) => a.alias)).toEqual(["default"]);
     const byId = Object.fromEntries(probed.models.map((m) => [m.providerModelId, m]));

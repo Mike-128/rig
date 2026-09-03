@@ -95,19 +95,30 @@ export async function probeConnection(app: AppContext, conn: Connection, opts: {
   return app.models.list(conn.id);
 }
 
-/** Model ids that are entitled but are not general chat models. */
+/** Entitled, but not a general-purpose chat model. */
 const NON_CHAT = /embed|transcribe|translate|tts|audio|speech|image|imagen|veo|whisper|rerank|moderation/i;
+
+/** Preview and experimental models usually carry much tighter quota, so they make a poor default. */
+const PREVIEW = /preview|experimental|-exp|-exp-/i;
 
 /**
  * Bind the "default" alias if it is unset, so the seeded agents work as soon as a key is added.
- * Prefers a general-purpose chat model; never overwrites a binding the user already made.
+ * Prefers a curated, generally available chat model; never overwrites a binding the user already made.
  */
 export function ensureDefaultAlias(app: AppContext): ModelAlias | undefined {
   if (app.models.getAlias("default")) return undefined;
-  const entitled = app.models.list().filter((m) => m.status === "entitled");
-  const pick = entitled.find((m) => !NON_CHAT.test(m.providerModelId)) ?? entitled[0];
+  const candidates = app.models
+    .list()
+    .filter((m) => m.status === "entitled" && !NON_CHAT.test(m.providerModelId))
+    .sort((a, b) => rank(a) - rank(b));
+  const pick = candidates[0] ?? app.models.list().find((m) => m.status === "entitled");
   if (!pick) return undefined;
   const alias: ModelAlias = { alias: "default", connectionId: pick.connectionId, modelId: pick.providerModelId };
   app.models.setAlias(alias);
   return alias;
+}
+
+/** Lower sorts first: curated catalog entries beat discovered ones, and stable beats preview. */
+function rank(m: Model): number {
+  return (m.origin === "catalog" ? 0 : 2) + (PREVIEW.test(m.providerModelId) ? 1 : 0);
 }

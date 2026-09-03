@@ -4,6 +4,7 @@ import type { AdapterConnection, ProviderAdapter } from "./types";
 import { cancelledError, errorFromStatus, isAbortError, networkError } from "./errors";
 import type { ProbeResult } from "../gateway/probe";
 import { classifyProbeError } from "../gateway/probe";
+import { parseToolArguments } from "./tool-args";
 
 function makeClient(conn: AdapterConnection): OpenAI {
   return new OpenAI({
@@ -84,15 +85,6 @@ function mapUsage(u: OpenAI.CompletionUsage | null | undefined): Usage {
   };
 }
 
-function safeParseJson(s: string): unknown {
-  if (!s.trim()) return {};
-  try {
-    return JSON.parse(s);
-  } catch {
-    return { _raw: s };
-  }
-}
-
 export const openaiAdapter: ProviderAdapter = {
   dialect: "openai.chat",
 
@@ -155,7 +147,7 @@ export const openaiAdapter: ProviderAdapter = {
       const content: Block[] = [];
       if (text.length) content.push({ type: "text", text });
       for (const c of [...calls.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1])) {
-        const input = safeParseJson(c.args);
+        const input = parseToolArguments(c.args);
         content.push({ type: "tool_use", id: c.id, name: c.name, input, ...(c.extra !== undefined ? { providerMeta: c.extra } : {}) });
         yield { type: "tool_use_end", id: c.id, name: c.name, input };
       }

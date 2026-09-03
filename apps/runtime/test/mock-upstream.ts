@@ -156,7 +156,10 @@ export function startMockUpstream(): Promise<Started> {
 
     // ---------------- OpenAI dialect ----------------
     if (req.url === "/v1/chat/completions" && req.method === "POST") {
-      if (model !== "mock-gpt" && model !== "mock-gpt-extra") return json(404, { error: { message: `The model '${model}' does not exist`, type: "invalid_request_error", code: "model_not_found" } });
+      // Any mock-* model exists except the one named to be missing, so tests can register their own.
+      if (!/^mock-/.test(model) || model === "mock-missing") {
+        return json(404, { error: { message: `The model '${model}' does not exist`, type: "invalid_request_error", code: "model_not_found" } });
+      }
       const prior = openaiToolResult(messages);
       const plan = hasTools && !prior ? chooseTool(messages, body.tools) : undefined;
       const text = prior ? `The file says: ${prior}` : `You said: ${lastUserText(messages)}`;
@@ -167,7 +170,6 @@ export function startMockUpstream(): Promise<Started> {
       const chunk = (choices: unknown[], extra: Record<string, unknown> = {}) => res.write(`data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", created: 1, model, choices, ...extra })}\n\n`);
       if (plan) {
         const argsJson = JSON.stringify(plan.args);
-        const half = Math.ceil(argsJson.length / 2);
         chunk([{ index: 0, delta: { role: "assistant", content: `Calling ${plan.name}.` }, finish_reason: null }]);
         chunk([
           {
@@ -176,8 +178,11 @@ export function startMockUpstream(): Promise<Started> {
             finish_reason: null,
           },
         ]);
-        chunk([{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: argsJson.slice(0, half) } }] }, finish_reason: null }]);
-        chunk([{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: argsJson.slice(half) } }] }, finish_reason: null }]);
+        // Gemini's OpenAI-compatible endpoint sends complete objects per chunk, including empty
+        // placeholders, rather than the partial fragments OpenAI streams. Both must parse.
+        chunk([{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: "{}" } }] }, finish_reason: null }]);
+        chunk([{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: "{}" } }] }, finish_reason: null }]);
+        chunk([{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: argsJson } }] }, finish_reason: null }]);
         chunk([{ index: 0, delta: {}, finish_reason: "tool_calls" }]);
       } else {
         chunk([{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }]);
