@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 import { ChatPage } from "./pages/Chat";
 import { AgentsPage } from "./pages/Agents";
 import { ModelsPage } from "./pages/Models";
+import { SkillsPage } from "./pages/Skills";
 import { api } from "./api";
 
-type Page = "chat" | "agents" | "models";
+type Page = "chat" | "agents" | "models" | "skills";
 
 function pageFromHash(): { page: Page; param?: string } {
   const h = location.hash.replace(/^#\/?/, "");
   const [p, param] = h.split("/");
-  if (p === "agents" || p === "models" || p === "chat") return { page: p, param };
+  if (p === "agents" || p === "models" || p === "chat" || p === "skills") return { page: p, param };
   return { page: "chat" };
 }
 
@@ -36,6 +37,9 @@ export function App() {
         <a className={route.page === "agents" ? "active" : ""} href="#/agents">
           Agents
         </a>
+        <a className={route.page === "skills" ? "active" : ""} href="#/skills">
+          Skills
+        </a>
         <a className={route.page === "models" ? "active" : ""} href="#/models">
           Models
         </a>
@@ -47,6 +51,7 @@ export function App() {
       <main className="main">
         {route.page === "chat" && <ChatPage initialSession={route.param} />}
         {route.page === "agents" && <AgentsPage initialSlug={route.param} />}
+        {route.page === "skills" && <SkillsPage initialName={route.param} />}
         {route.page === "models" && <ModelsPage />}
       </main>
     </div>

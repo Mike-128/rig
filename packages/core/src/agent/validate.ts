@@ -1,4 +1,4 @@
-import { AgentDefinitionSchema, SIDE_EFFECT_TOOLS, type AgentDefinition, type AgentDefinitionInput } from "./schema";
+import { AgentDefinitionSchema, SIDE_EFFECT_TOOLS, slugify, type AgentDefinition, type AgentDefinitionInput } from "./schema";
 
 export interface ValidationIssue {
   path: string;
@@ -12,12 +12,25 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
+export interface ValidateOptions {
+  /** Skill names installed on this machine, so unknown ones can be reported. */
+  knownSkills?: string[];
+  /** Fill in a slug from the name when the caller omitted it (used by the agent_write tool). */
+  deriveSlug?: boolean;
+}
+
 /**
  * Structural validation plus the native engine's `supports()` rules.
  * Warnings do not block saving; errors do.
  */
-export function validateAgentDefinition(input: unknown): ValidationResult {
-  const parsed = AgentDefinitionSchema.safeParse(input);
+export function validateAgentDefinition(input: unknown, opts: ValidateOptions = {}): ValidationResult {
+  let candidate = input;
+  if (opts.deriveSlug && typeof input === "object" && input !== null) {
+    const o = input as Record<string, unknown>;
+    if (!o.slug && typeof o.name === "string") candidate = { ...o, slug: slugify(o.name) };
+  }
+
+  const parsed = AgentDefinitionSchema.safeParse(candidate);
   if (!parsed.success) {
     return {
       ok: false,
@@ -41,8 +54,25 @@ export function validateAgentDefinition(input: unknown): ValidationResult {
   // sandbox 0 forbids process spawn and writes
   if (def.sandbox === 0) {
     for (const t of def.tools) {
-      if (SIDE_EFFECT_TOOLS.includes(t)) {
+      if (t === "file_write" || t === "shell") {
         issues.push({ path: "tools", message: `"${t}" requires sandbox level 1 or higher`, severity: "error" });
+      }
+    }
+  }
+
+  // skills need load_skill to be reachable
+  if (def.skills.length && !def.tools.includes("load_skill")) {
+    issues.push({
+      path: "tools",
+      message: "skills are attached but load_skill is not enabled, so the agent cannot read them",
+      severity: "error",
+    });
+  }
+
+  if (opts.knownSkills) {
+    for (const s of def.skills) {
+      if (!opts.knownSkills.includes(s)) {
+        issues.push({ path: "skills", message: `skill "${s}" is not installed on this machine`, severity: "warning" });
       }
     }
   }

@@ -5,8 +5,9 @@ import http from "node:http";
  *
  * Auth: x-api-key or Authorization: Bearer must equal GOOD_KEY.
  * Models: "mock-claude" (Anthropic dialect), "mock-gpt" (OpenAI dialect). Others -> 404.
- * Behavior: if the request has tools and the latest user text contains "read", the model
- * calls file_read on hello.txt once; after a tool result it replies with the file content.
+ * Behavior: the mock picks a tool from the user's text and the offered tools (see chooseTool):
+ * "read" -> file_read, "skill" -> load_skill, "build"/"create an agent" -> agent_write.
+ * After a tool result it replies with the result content.
  */
 export const GOOD_KEY = "good-key";
 
@@ -41,6 +42,38 @@ function lastUserText(messages: { role: string; content: unknown }[]): string {
     }
   }
   return "";
+}
+
+interface ToolPlan {
+  name: string;
+  args: Record<string, unknown>;
+}
+
+/** Decide which tool the mock "model" calls, from the user's text and the offered tools. */
+export function chooseTool(messages: { role: string; content: unknown }[], tools: unknown): ToolPlan | undefined {
+  const names = new Set(
+    (Array.isArray(tools) ? tools : []).map((t) => {
+      const o = t as { name?: string; function?: { name?: string } };
+      return o.name ?? o.function?.name ?? "";
+    }),
+  );
+  const text = lastUserText(messages);
+  if (names.has("agent_write") && /build|create an agent/i.test(text)) {
+    return {
+      name: "agent_write",
+      args: {
+        name: "Note Taker",
+        description: "Writes meeting notes.",
+        instructions: "You write concise meeting notes from transcripts the user provides.",
+        model: { alias: "default" },
+        tools: ["file_read"],
+        sandbox: 0,
+      },
+    };
+  }
+  if (names.has("load_skill") && /skill/i.test(text)) return { name: "load_skill", args: { name: "agent-design" } };
+  if (names.has("file_read") && /read/i.test(text)) return { name: "file_read", args: { path: "hello.txt" } };
+  return undefined;
 }
 
 function anthropicToolResult(messages: { role: string; content: unknown }[]): string | undefined {
@@ -92,7 +125,7 @@ export function startMockUpstream(): Promise<Started> {
     if (req.url === "/v1/messages" && req.method === "POST") {
       if (model !== "mock-claude") return json(404, { type: "error", error: { type: "not_found_error", message: `model: ${model}` } });
       const prior = anthropicToolResult(messages);
-      const wantsTool = hasTools && !prior && /read/i.test(lastUserText(messages));
+      const plan = hasTools && !prior ? chooseTool(messages, body.tools) : undefined;
       const text = prior ? `The file says: ${prior}` : `You said: ${lastUserText(messages)}`;
       if (!body.stream) {
         return json(200, { id: "msg_1", type: "message", role: "assistant", model, content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", stop_sequence: null, usage: { input_tokens: 3, output_tokens: 1 } });
@@ -100,13 +133,15 @@ export function startMockUpstream(): Promise<Started> {
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
       const ev = (name: string, data: unknown) => res.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
       ev("message_start", { type: "message_start", message: { id: "msg_1", type: "message", role: "assistant", model, content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 12, output_tokens: 1 } } });
-      if (wantsTool) {
+      if (plan) {
+        const argsJson = JSON.stringify(plan.args);
+        const half = Math.ceil(argsJson.length / 2);
         ev("content_block_start", { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } });
-        ev("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Reading the file." } });
+        ev("content_block_delta", { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: `Calling ${plan.name}.` } });
         ev("content_block_stop", { type: "content_block_stop", index: 0 });
-        ev("content_block_start", { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "toolu_1", name: "file_read", input: {} } });
-        ev("content_block_delta", { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: '{"path": "hel' } });
-        ev("content_block_delta", { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: 'lo.txt"}' } });
+        ev("content_block_start", { type: "content_block_start", index: 1, content_block: { type: "tool_use", id: "toolu_1", name: plan.name, input: {} } });
+        ev("content_block_delta", { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: argsJson.slice(0, half) } });
+        ev("content_block_delta", { type: "content_block_delta", index: 1, delta: { type: "input_json_delta", partial_json: argsJson.slice(half) } });
         ev("content_block_stop", { type: "content_block_stop", index: 1 });
         ev("message_delta", { type: "message_delta", delta: { stop_reason: "tool_use", stop_sequence: null }, usage: { output_tokens: 9 } });
       } else {
@@ -123,18 +158,26 @@ export function startMockUpstream(): Promise<Started> {
     if (req.url === "/v1/chat/completions" && req.method === "POST") {
       if (model !== "mock-gpt" && model !== "mock-gpt-extra") return json(404, { error: { message: `The model '${model}' does not exist`, type: "invalid_request_error", code: "model_not_found" } });
       const prior = openaiToolResult(messages);
-      const wantsTool = hasTools && !prior && /read/i.test(lastUserText(messages));
+      const plan = hasTools && !prior ? chooseTool(messages, body.tools) : undefined;
       const text = prior ? `The file says: ${prior}` : `You said: ${lastUserText(messages)}`;
       if (!body.stream) {
         return json(200, { id: "chatcmpl-1", object: "chat.completion", created: 1, model, choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 } });
       }
       res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
       const chunk = (choices: unknown[], extra: Record<string, unknown> = {}) => res.write(`data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", created: 1, model, choices, ...extra })}\n\n`);
-      if (wantsTool) {
-        chunk([{ index: 0, delta: { role: "assistant", content: "Reading the file." }, finish_reason: null }]);
-        chunk([{ index: 0, delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "file_read", arguments: "" } }] }, finish_reason: null }]);
-        chunk([{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '{"path":' } }] }, finish_reason: null }]);
-        chunk([{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: '"hello.txt"}' } }] }, finish_reason: null }]);
+      if (plan) {
+        const argsJson = JSON.stringify(plan.args);
+        const half = Math.ceil(argsJson.length / 2);
+        chunk([{ index: 0, delta: { role: "assistant", content: `Calling ${plan.name}.` }, finish_reason: null }]);
+        chunk([
+          {
+            index: 0,
+            delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", extra_content: { google: { thought_signature: "sig-abc" } }, function: { name: plan.name, arguments: "" } }] },
+            finish_reason: null,
+          },
+        ]);
+        chunk([{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: argsJson.slice(0, half) } }] }, finish_reason: null }]);
+        chunk([{ index: 0, delta: { tool_calls: [{ index: 0, function: { arguments: argsJson.slice(half) } }] }, finish_reason: null }]);
         chunk([{ index: 0, delta: {}, finish_reason: "tool_calls" }]);
       } else {
         chunk([{ index: 0, delta: { role: "assistant", content: "" }, finish_reason: null }]);

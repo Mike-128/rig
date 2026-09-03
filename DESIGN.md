@@ -1,6 +1,7 @@
 # Provider-Agnostic Agent Harness — High-Level Design (Draft v0.6)
 
-Status: draft for review
+Status: draft for review. Sections 14.1 to 14.3 are implemented in this repo, plus skills (6.11) and
+conversational agent creation via harness-management tools, which arrived earlier than the phase table predicted.
 Date: 2026-09-02
 Changes since v0.5: added section 14, the first build slice, with a definition of done covering model probing plus creating, saving, running, and replaying a user-designed agent on both dialects.
 Changes since v0.4: two entry points (Chat and Workbench) on one runtime, with chat-to-agent escalation through detached tasks (section 8); Session kinds and task events added; clients (web, CLI/TUI, IDE later) defined; phases, decisions, and questions updated.

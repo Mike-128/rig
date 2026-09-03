@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { DEFAULT_CAPABILITIES, type Dialect } from "@harness/core";
 import type { AppContext } from "../context";
-import { discoverListed, entryToModel, probeConnection, probeModel, seedFromProfile } from "../catalog";
+import { discoverListed, ensureDefaultAlias, entryToModel, probeConnection, probeModel, seedFromProfile } from "../catalog";
 import { newId } from "../ids";
 
 const CreateConnection = z.object({
@@ -75,7 +75,8 @@ export function catalogRoutes(app: AppContext): Hono {
     const includeListed = c.req.query("includeListed") === "true";
     const listing = profile ? await discoverListed(app, conn, profile) : { added: [] };
     const models = await probeConnection(app, conn, { includeListed });
-    return c.json({ models, listed: listing.added.length, listError: listing.error });
+    const boundDefault = ensureDefaultAlias(app);
+    return c.json({ models, listed: listing.added.length, listError: listing.error, boundDefault });
   });
 
   r.post("/connections/:id/models", async (c) => {
@@ -112,7 +113,9 @@ export function catalogRoutes(app: AppContext): Hono {
     const conn = app.connections.get(c.req.param("connectionId"));
     const model = conn && app.models.find(conn.id, c.req.param("providerModelId"));
     if (!conn || !model) return c.json({ error: "not found" }, 404);
-    return c.json(await probeModel(app, conn, model));
+    const probed = await probeModel(app, conn, model);
+    ensureDefaultAlias(app);
+    return c.json(probed);
   });
 
   r.delete("/models/:connectionId/:providerModelId", (c) => {

@@ -9,6 +9,7 @@ export interface RuntimeConfig {
   agentsDir: string;
   workspacesDir: string;
   profilesDir: string;
+  skillsDir: string;
   host: string;
   port: number;
   maxConcurrentRuns: number;
@@ -27,6 +28,7 @@ export function loadConfig(overrides: Partial<RuntimeConfig> = {}): RuntimeConfi
     agentsDir: path.join(home, "agents"),
     workspacesDir: path.join(home, "workspaces"),
     profilesDir: path.join(home, "profiles"),
+    skillsDir: path.join(home, "skills"),
     host,
     port,
     maxConcurrentRuns: Number(process.env.HARNESS_MAX_RUNS ?? 4),
@@ -34,6 +36,6 @@ export function loadConfig(overrides: Partial<RuntimeConfig> = {}): RuntimeConfi
     proxyOrigin: `http://${host}:${port}`,
     ...overrides,
   };
-  for (const d of [cfg.home, cfg.agentsDir, cfg.workspacesDir, cfg.profilesDir]) mkdirSync(d, { recursive: true });
+  for (const d of [cfg.home, cfg.agentsDir, cfg.workspacesDir, cfg.profilesDir, cfg.skillsDir]) mkdirSync(d, { recursive: true });
   return cfg;
 }

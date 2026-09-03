@@ -3,6 +3,7 @@ export * from "./agent";
 export * from "./adapters";
 export * from "./engine";
 export * from "./tools";
+export * from "./skills";
 export * from "./gateway/profiles";
 export * from "./gateway/resolver";
 export * from "./gateway/probe";

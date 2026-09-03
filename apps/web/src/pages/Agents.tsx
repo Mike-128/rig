@@ -1,9 +1,25 @@
 import { useEffect, useState } from "react";
-import type { AgentSummary, Model, ModelAlias } from "@harness/core/types";
-import { BUILTIN_TOOL_NAMES, slugify, type AgentDefinitionInput, type ValidationIssue } from "@harness/core/agent";
+import type { AgentSummary, Model, ModelAlias, SkillSummary } from "@harness/core/types";
+import { MANAGEMENT_TOOLS, slugify, type AgentDefinitionInput, type ValidationIssue } from "@harness/core/agent";
 import { api } from "../api";
 
 type ModelRow = Model & { connectionName: string };
+
+const WORKSPACE_TOOLS = ["file_read", "file_write", "web_fetch", "shell", "load_skill"] as const;
+
+const TOOL_HELP: Record<string, string> = {
+  file_read: "Read files and list directories inside the workspace. Read-only.",
+  file_write: "Create or overwrite files inside the workspace. Needs sandbox 1.",
+  web_fetch: "Fetch a public http(s) URL as text. Read-only.",
+  shell: "Run a command in the workspace directory. Needs sandbox 1; the widest capability here.",
+  load_skill: "Read the full instructions for an attached skill. Added automatically when you attach one.",
+  agent_list: "List the agents saved in this harness.",
+  agent_read: "Read another agent's definition.",
+  agent_write: "Create or update agents. Gate this with approval.",
+  model_list: "See which models this harness can reach.",
+  skill_list: "List installed skills.",
+  skill_write: "Create or replace skills. Gate this with approval.",
+};
 
 interface Form {
   name: string;
@@ -15,6 +31,7 @@ interface Form {
   connection: string;
   model: string;
   tools: string[];
+  skills: string[];
   approvals: string[];
   sandbox: 0 | 1;
   maxTurns: number;
@@ -35,6 +52,7 @@ const blank = (): Form => ({
   connection: "",
   model: "",
   tools: ["web_fetch", "file_read"],
+  skills: [],
   approvals: [],
   sandbox: 1,
   maxTurns: 25,
@@ -53,6 +71,7 @@ function toInput(f: Form): AgentDefinitionInput {
     model: f.bindingKind === "alias" ? { alias: f.alias } : { connection: f.connection, model: f.model },
     instructions: f.instructions,
     tools: f.tools as AgentDefinitionInput["tools"],
+    skills: f.skills,
     sandbox: f.sandbox,
     approvals: f.approvals as AgentDefinitionInput["approvals"],
     budget: {
@@ -84,6 +103,7 @@ function fromDefinition(d: Record<string, unknown>): Form {
     connection: model.connection ?? "",
     model: model.model ?? "",
     tools: (d.tools as string[]) ?? [],
+    skills: (d.skills as string[]) ?? [],
     approvals: (d.approvals as string[]) ?? [],
     sandbox: (d.sandbox as 0 | 1) ?? 1,
     maxTurns: budget.maxTurns ?? 25,
@@ -99,6 +119,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [models, setModels] = useState<ModelRow[]>([]);
   const [aliases, setAliases] = useState<ModelAlias[]>([]);
+  const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [form, setForm] = useState<Form>(blank());
   const [editing, setEditing] = useState<string | undefined>(initialSlug);
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
@@ -110,9 +131,14 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
   const refresh = () => api<AgentSummary[]>("/agents").then(setAgents);
 
   useEffect(() => {
+    setEditing(initialSlug);
+  }, [initialSlug]);
+
+  useEffect(() => {
     refresh();
     api<ModelRow[]>("/models").then(setModels).catch(() => {});
     api<ModelAlias[]>("/aliases").then(setAliases).catch(() => {});
+    api<{ skills: SkillSummary[] }>("/skills").then((d) => setSkills(d.skills)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -196,8 +222,15 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
     location.hash = `#/chat/${s.id}`;
   }
 
-  const toggle = (list: "tools" | "approvals", name: string) =>
+  const toggle = (list: "tools" | "approvals" | "skills", name: string) =>
     set(list, form[list].includes(name) ? form[list].filter((t) => t !== name) : [...form[list], name]);
+
+  // Attaching a skill implies the agent needs load_skill to read it.
+  const toggleSkill = (name: string) => {
+    const has = form.skills.includes(name);
+    const next = has ? form.skills.filter((s) => s !== name) : [...form.skills, name];
+    setForm((f) => ({ ...f, skills: next, tools: next.length && !f.tools.includes("load_skill") ? [...f.tools, "load_skill"] : f.tools }));
+  };
 
   const connections = [...new Map(models.map((m) => [m.connectionId, m.connectionName])).entries()];
   const modelsForConn = models.filter((m) => m.connectionId === form.connection || m.connectionName === form.connection);
@@ -214,6 +247,15 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
           }}
         >
           New agent
+        </button>
+        <button
+          style={{ width: "100%", marginBottom: 12 }}
+          onClick={async () => {
+            const s = await api<{ id: string }>("/sessions", { method: "POST", json: { agent: "agent-builder" } });
+            location.hash = `#/chat/${s.id}`;
+          }}
+        >
+          Or describe one in chat
         </button>
         <h3>Library</h3>
         {agents.map((a) => (
@@ -362,12 +404,41 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
           </div>
 
           <div className="card">
+            <h3>Skills</h3>
+            <div className="muted" style={{ marginBottom: 8 }}>
+              Only the descriptions sit in the agent's context. It loads the full instructions on demand with load_skill, which is added automatically when you attach one.
+            </div>
+            <div className="checks">
+              {skills.map((s) => (
+                <label key={s.name} title={s.description}>
+                  <input type="checkbox" checked={form.skills.includes(s.name)} onChange={() => toggleSkill(s.name)} /> {s.name}
+                </label>
+              ))}
+              {!skills.length && (
+                <span className="muted">
+                  No skills installed. <a href="#/skills">Create one</a>.
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="card">
             <h3>Tools and policy</h3>
             <div className="field">
-              <span className="muted">Enabled tools</span>
+              <span className="muted">Workspace tools</span>
               <div className="checks">
-                {BUILTIN_TOOL_NAMES.map((t) => (
-                  <label key={t}>
+                {WORKSPACE_TOOLS.map((t) => (
+                  <label key={t} title={TOOL_HELP[t]}>
+                    <input type="checkbox" checked={form.tools.includes(t)} onChange={() => toggle("tools", t)} /> {t}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="field">
+              <span className="muted">Harness management tools — let this agent create and revise other agents and skills</span>
+              <div className="checks">
+                {MANAGEMENT_TOOLS.map((t) => (
+                  <label key={t} title={TOOL_HELP[t]}>
                     <input type="checkbox" checked={form.tools.includes(t)} onChange={() => toggle("tools", t)} /> {t}
                   </label>
                 ))}

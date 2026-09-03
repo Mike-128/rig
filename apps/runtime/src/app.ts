@@ -1,4 +1,6 @@
 import { Hono } from "hono";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { cors } from "hono/cors";
 import { loadConfig, type RuntimeConfig } from "./config";
 import { openDb } from "./db";
@@ -8,12 +10,14 @@ import { ModelStore } from "./stores/models";
 import { AgentStore } from "./stores/agents";
 import { SessionStore } from "./stores/sessions";
 import { ProfileStore } from "./stores/profiles";
+import { SkillStore } from "./stores/skills";
 import { RunManager } from "./scheduler";
 import type { AppContext } from "./context";
 import { proxyRoutes } from "./proxy";
 import { catalogRoutes } from "./routes/catalog";
 import { agentRoutes } from "./routes/agents";
 import { sessionRoutes } from "./routes/sessions";
+import { skillRoutes } from "./routes/skills";
 import { seedDefaults } from "./seed";
 
 export interface BuiltApp {
@@ -35,6 +39,7 @@ export async function buildApp(overrides: Partial<RuntimeConfig> = {}, opts: { f
     agents: new AgentStore(db, config.agentsDir),
     sessions: new SessionStore(db),
     profiles: new ProfileStore(config.profilesDir),
+    skills: new SkillStore(config.skillsDir, path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../skills")),
     runs,
   };
   runs.attach(app);
@@ -44,10 +49,11 @@ export async function buildApp(overrides: Partial<RuntimeConfig> = {}, opts: { f
 
   const hono = new Hono();
   hono.use("/api/*", cors({ origin: (o) => (o && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o) ? o : ""), credentials: false }));
-  hono.get("/api/health", (c) => c.json({ ok: true, secrets: secrets.backend, home: config.home, version: "0.1.0" }));
+  hono.get("/api/health", (c) => c.json({ ok: true, secrets: secrets.backend, home: config.home, version: "0.2.0", skills: app.skills.list().length }));
   hono.route("/proxy", proxyRoutes(app));
   hono.route("/api", catalogRoutes(app));
   hono.route("/api/agents", agentRoutes(app));
+  hono.route("/api/skills", skillRoutes(app));
   hono.route("/api", sessionRoutes(app));
   hono.onError((err, c) => {
     console.error("[harness] unhandled", err);

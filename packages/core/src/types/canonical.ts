@@ -19,6 +19,11 @@ export interface ToolUseBlock {
   id: string;
   name: string;
   input: unknown;
+  /**
+   * Opaque provider data that must be echoed back with this call on later turns.
+   * Gemini 3 requires its `thought_signature` here, or the next request is a 400.
+   */
+  providerMeta?: unknown;
 }
 
 export interface ToolResultBlock {

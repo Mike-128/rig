@@ -82,7 +82,10 @@ describe("v1 definition of done", () => {
     connId = created.connection.id;
     expect(created.models).toHaveLength(3);
 
-    const probed = await api<{ models: Model[]; listed: number }>(`/connections/${connId}/probe`, { method: "POST" });
+    const probed = await api<{ models: Model[]; listed: number; boundDefault?: { modelId: string } }>(`/connections/${connId}/probe`, { method: "POST" });
+    // With no alias set, probing binds "default" to an entitled chat model so seeded agents work immediately.
+    expect(probed.boundDefault?.modelId).toBe("mock-claude");
+    expect((await api<{ alias: string }[]>("/aliases")).map((a) => a.alias)).toEqual(["default"]);
     const byId = Object.fromEntries(probed.models.map((m) => [m.providerModelId, m]));
     expect(byId["mock-claude"].status).toBe("entitled");
     expect(byId["mock-gpt"].status).toBe("entitled");
@@ -96,6 +99,12 @@ describe("v1 definition of done", () => {
     const last = upstream.requests.at(-1)!;
     expect(last.headers["x-api-key"]).toBe(GOOD_KEY);
     expect(last.headers["x-harness-proxy-token"]).toBeUndefined();
+
+    // an existing binding is never overwritten by a later probe
+    await api("/aliases/default", { method: "PUT", json: { connectionId: connId, modelId: "mock-gpt" } });
+    const reprobe = await api<{ boundDefault?: unknown }>(`/connections/${connId}/probe`, { method: "POST" });
+    expect(reprobe.boundDefault).toBeUndefined();
+    expect((await api<{ alias: string; modelId: string }[]>("/aliases"))[0].modelId).toBe("mock-gpt");
 
     // a wrong key classifies as unauthorized
     const bad = await api<{ connection: { id: string } }>("/connections", { method: "POST", json: { name: "bad", profileId: "mock-gateway", key: "nope" } });
@@ -138,7 +147,7 @@ describe("v1 definition of done", () => {
     expect(imported.ok).toBe(true);
     expect(imported.saved.slug).toBe("reader-copy");
     const list = await api<{ slug: string }[]>("/agents");
-    expect(list.map((a) => a.slug).sort()).toEqual(["assistant", "reader", "reader-copy"]);
+    expect(list.map((a) => a.slug).sort()).toEqual(["agent-builder", "assistant", "reader", "reader-copy"]);
   });
 
   it("4. runs the agent on the OpenAI dialect: streams, calls a tool, records usage and cost", async () => {
@@ -164,6 +173,12 @@ describe("v1 definition of done", () => {
     expect(final.message.content[0]).toEqual({ type: "text", text: "The file says: hello from the workspace" });
     // no transient deltas were persisted
     expect(types).not.toContain("text_delta");
+
+    // Provider metadata on a tool call is replayed verbatim on the next request.
+    // Gemini 3 rejects the follow-up turn with a 400 when its thought_signature is dropped.
+    const followUp = upstream.requests.filter((r) => r.path === "/v1/chat/completions").at(-1)!;
+    const replayed = (followUp.body as { messages: { role: string; tool_calls?: { extra_content?: unknown }[] }[] }).messages.find((m) => m.role === "assistant" && m.tool_calls);
+    expect(replayed?.tool_calls?.[0].extra_content).toEqual({ google: { thought_signature: "sig-abc" } });
     firstEventCount = detail.events.length;
   });
 

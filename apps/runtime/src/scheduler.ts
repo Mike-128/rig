@@ -20,6 +20,7 @@ import {
 } from "@harness/core";
 import type { AppContext } from "./context";
 import { adapterConnection } from "./catalog";
+import { createHost } from "./host";
 import { nowIso } from "./db";
 import { newId } from "./ids";
 
@@ -130,6 +131,8 @@ export class RunManager {
         policy: policyForAgent(agent, tools),
         workspace: session.workspace,
         signal: controller.signal,
+        skills: this.app.skills.list(),
+        host: createHost(this.app),
         requestApproval: (callId) =>
           new Promise<ApprovalDecision>((resolve) => {
             state.approvals.set(callId, (d) => {

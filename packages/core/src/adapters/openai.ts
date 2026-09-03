@@ -40,11 +40,16 @@ function toOpenAIMessages(system: string | undefined, messages: Message[]): Open
         .join("");
       const toolCalls = m.content
         .filter((b): b is Extract<Block, { type: "tool_use" }> => b.type === "tool_use")
-        .map((b) => ({
-          id: b.id,
-          type: "function" as const,
-          function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) },
-        }));
+        .map((b) => {
+          const call: Record<string, unknown> = {
+            id: b.id,
+            type: "function",
+            function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) },
+          };
+          // Replayed verbatim: Gemini 3 rejects a tool call whose thought_signature is missing.
+          if (b.providerMeta !== undefined) call.extra_content = b.providerMeta;
+          return call as unknown as OpenAI.ChatCompletionMessageToolCall;
+        });
       const msg: OpenAI.ChatCompletionAssistantMessageParam = { role: "assistant", content: text.length ? text : null };
       if (toolCalls.length) msg.tool_calls = toolCalls;
       out.push(msg);
@@ -115,7 +120,7 @@ export const openaiAdapter: ProviderAdapter = {
     try {
       const stream = await client.chat.completions.create(params, { signal });
       let text = "";
-      const calls = new Map<number, { id: string; name: string; args: string }>();
+      const calls = new Map<number, { id: string; name: string; args: string; extra?: unknown }>();
       let finish: string | null | undefined;
       let usage: Usage | undefined;
       for await (const chunk of stream) {
@@ -130,13 +135,15 @@ export const openaiAdapter: ProviderAdapter = {
         for (const tc of delta?.tool_calls ?? []) {
           const idx = tc.index ?? 0;
           let cur = calls.get(idx);
+          const extra = (tc as unknown as { extra_content?: unknown }).extra_content;
           if (!cur) {
-            cur = { id: tc.id ?? `call_${idx}`, name: tc.function?.name ?? "", args: "" };
+            cur = { id: tc.id ?? `call_${idx}`, name: tc.function?.name ?? "", args: "", extra };
             calls.set(idx, cur);
             yield { type: "tool_use_start", id: cur.id, name: cur.name };
           } else {
             if (tc.id) cur.id = tc.id;
             if (tc.function?.name) cur.name = tc.function.name;
+            if (extra !== undefined) cur.extra = extra;
           }
           if (tc.function?.arguments) {
             cur.args += tc.function.arguments;
@@ -149,7 +156,7 @@ export const openaiAdapter: ProviderAdapter = {
       if (text.length) content.push({ type: "text", text });
       for (const c of [...calls.entries()].sort((a, b) => a[0] - b[0]).map((e) => e[1])) {
         const input = safeParseJson(c.args);
-        content.push({ type: "tool_use", id: c.id, name: c.name, input });
+        content.push({ type: "tool_use", id: c.id, name: c.name, input, ...(c.extra !== undefined ? { providerMeta: c.extra } : {}) });
         yield { type: "tool_use_end", id: c.id, name: c.name, input };
       }
       const u = usage ?? { inputTokens: 0, outputTokens: 0, cachedInputTokens: 0, cacheWriteTokens: 0 };

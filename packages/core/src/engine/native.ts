@@ -1,5 +1,7 @@
 import type { AgentDefinition } from "../agent/schema";
 import type { AdapterConnection, ProviderAdapter } from "../adapters/types";
+import type { HostServices } from "../tools/host";
+import type { SkillSummary } from "../skills/types";
 import type { ToolSpec } from "../tools/types";
 import {
   addUsage,
@@ -18,6 +20,7 @@ import {
 } from "../types";
 import { estimateCost } from "./cost";
 import type { PolicyEvaluator } from "./policy";
+import { buildSystemPrompt } from "./prompt";
 
 export interface EngineInput {
   agent: AgentDefinition;
@@ -31,6 +34,10 @@ export interface EngineInput {
   policy: PolicyEvaluator;
   workspace: string;
   signal: AbortSignal;
+  /** Skills installed on this machine; the agent's own list decides which are advertised. */
+  skills?: SkillSummary[];
+  /** Lends harness-management capabilities to tools that ask for them. */
+  host?: HostServices;
   /** Suspends the run until the user decides. */
   requestApproval(callId: string, name: string, input: unknown): Promise<ApprovalDecision>;
   /** Called when a turn's stream reaches its end so the caller can see the final message. */
@@ -45,6 +52,7 @@ export async function* runNativeEngine(input: EngineInput): AsyncGenerator<RunEv
   const { agent, model, adapter, connection, tools, policy, signal } = input;
   const messages: Message[] = [...input.history, { role: "user", content: [{ type: "text", text: input.userTurn }] }];
   const toolByName = new Map(tools.map((t) => [t.definition.name, t]));
+  const system = buildSystemPrompt(agent, { workspace: input.workspace, skills: input.skills });
 
   let cumulative: Usage = emptyUsage();
   let cost = 0;
@@ -69,7 +77,7 @@ export async function* runNativeEngine(input: EngineInput): AsyncGenerator<RunEv
 
     const req: CanonicalRequest = {
       model: connection.modelId,
-      system: agent.instructions,
+      system,
       messages,
       tools: tools.length ? tools.map((t) => t.definition) : undefined,
       toolChoice: tools.length ? "auto" : undefined,
@@ -175,7 +183,13 @@ export async function* runNativeEngine(input: EngineInput): AsyncGenerator<RunEv
       let output: string;
       let isError = false;
       try {
-        const r = await spec.run(call.input, { workspace: input.workspace, sandbox: agent.sandbox, signal });
+        const r = await spec.run(call.input, {
+          workspace: input.workspace,
+          sandbox: agent.sandbox,
+          signal,
+          host: input.host,
+          enabledSkills: agent.skills,
+        });
         output = r.output;
         isError = r.isError ?? false;
       } catch (e) {

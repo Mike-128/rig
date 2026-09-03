@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { agentFromYaml, agentToYaml, validateAgentDefinition, type AgentDefinition, type AgentSummary, type ValidationResult } from "@harness/core";
+import { agentFromYaml, agentToYaml, validateAgentDefinition, type AgentDefinition, type AgentSummary, type ValidateOptions, type ValidationResult } from "@harness/core";
 import { nowIso, type Db } from "../db";
 
 /**
@@ -71,8 +71,8 @@ export class AgentStore {
   }
 
   /** Validate and save. A new version is created only when content changed. */
-  save(input: unknown): ValidationResult & { saved?: AgentDefinition } {
-    const v = validateAgentDefinition(input);
+  save(input: unknown, opts: ValidateOptions = {}): ValidationResult & { saved?: AgentDefinition } {
+    const v = validateAgentDefinition(input, opts);
     if (!v.ok || !v.definition) return v;
     const incoming = v.definition;
     const existing = this.get(incoming.slug);

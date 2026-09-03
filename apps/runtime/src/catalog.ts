@@ -6,6 +6,7 @@ import {
   type Connection,
   type GatewayProfile,
   type Model,
+  type ModelAlias,
   type ProfileModelEntry,
 } from "@harness/core";
 import type { AppContext } from "./context";
@@ -92,4 +93,21 @@ export async function probeConnection(app: AppContext, conn: Connection, opts: {
     }),
   );
   return app.models.list(conn.id);
+}
+
+/** Model ids that are entitled but are not general chat models. */
+const NON_CHAT = /embed|transcribe|translate|tts|audio|speech|image|imagen|veo|whisper|rerank|moderation/i;
+
+/**
+ * Bind the "default" alias if it is unset, so the seeded agents work as soon as a key is added.
+ * Prefers a general-purpose chat model; never overwrites a binding the user already made.
+ */
+export function ensureDefaultAlias(app: AppContext): ModelAlias | undefined {
+  if (app.models.getAlias("default")) return undefined;
+  const entitled = app.models.list().filter((m) => m.status === "entitled");
+  const pick = entitled.find((m) => !NON_CHAT.test(m.providerModelId)) ?? entitled[0];
+  if (!pick) return undefined;
+  const alias: ModelAlias = { alias: "default", connectionId: pick.connectionId, modelId: pick.providerModelId };
+  app.models.setAlias(alias);
+  return alias;
 }

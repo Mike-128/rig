@@ -6,6 +6,7 @@ import type { ModelStore } from "./stores/models";
 import type { AgentStore } from "./stores/agents";
 import type { SessionStore } from "./stores/sessions";
 import type { ProfileStore } from "./stores/profiles";
+import type { SkillStore } from "./stores/skills";
 import type { RunManager } from "./scheduler";
 
 export interface AppContext {
@@ -17,5 +18,6 @@ export interface AppContext {
   agents: AgentStore;
   sessions: SessionStore;
   profiles: ProfileStore;
+  skills: SkillStore;
   runs: RunManager;
 }

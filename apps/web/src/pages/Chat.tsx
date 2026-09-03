@@ -24,6 +24,11 @@ export function ChatPage({ initialSession }: { initialSession?: string }) {
 
   const refreshSessions = useCallback(() => api<Session[]>("/sessions").then(setSessions).catch(() => {}), []);
 
+  // The URL is the source of truth for which session is open, so back/forward and shared links work.
+  useEffect(() => {
+    setSelected(initialSession);
+  }, [initialSession]);
+
   useEffect(() => {
     refreshSessions();
     api<AgentSummary[]>("/agents").then(setAgents).catch(() => {});
@@ -69,10 +74,10 @@ export function ChatPage({ initialSession }: { initialSession?: string }) {
     if (thread.status === "idle") refreshSessions();
   }, [thread.status, refreshSessions]);
 
-  async function newSession() {
+  async function startWith(slug: string, ws?: string) {
     setError(null);
     try {
-      const s = await api<Session>("/sessions", { method: "POST", json: { agent: agentForNew, workspace: workspace || undefined } });
+      const s = await api<Session>("/sessions", { method: "POST", json: { agent: slug, workspace: ws || undefined } });
       await refreshSessions();
       location.hash = `#/chat/${s.id}`;
       setSelected(s.id);
@@ -80,6 +85,8 @@ export function ChatPage({ initialSession }: { initialSession?: string }) {
       setError((e as Error).message);
     }
   }
+
+  const newSession = () => startWith(agentForNew, workspace);
 
   async function send() {
     if (!session || !input.trim()) return;
@@ -125,6 +132,18 @@ export function ChatPage({ initialSession }: { initialSession?: string }) {
   return (
     <div className="split">
       <aside className="side">
+        <h3>Build an agent</h3>
+        <button
+          className="primary"
+          style={{ width: "100%", marginBottom: 6 }}
+          onClick={() => startWith("agent-builder")}
+          disabled={!agents.some((a) => a.slug === "agent-builder")}
+        >
+          Describe an agent in chat
+        </button>
+        <div className="muted" style={{ fontSize: 12, marginBottom: 16 }}>
+          Say what you want it to do. The builder picks a model, tools, and skills, then saves it for you.
+        </div>
         <h3>New session</h3>
         <label className="field">
           <span>Agent</span>
