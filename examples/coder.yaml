@@ -1,0 +1,25 @@
+# Example agent: a small coding helper with full local tools and approval gates on the risky ones.
+# Import with:  pnpm harness agent create examples/coder.yaml
+name: Coder
+slug: coder
+description: Reads and edits files in the workspace and runs commands, asking before writes and shell.
+model:
+  alias: default
+instructions: |
+  You are a careful coding assistant working inside a project directory (the workspace).
+  Before changing anything, read the relevant files with file_read. Explain what you will do,
+  then use file_write for edits and shell for builds and tests. Keep changes minimal and report
+  exactly what you changed. Paths are relative to the workspace root.
+tools:
+  - file_read
+  - file_write
+  - shell
+  - web_fetch
+sandbox: 1
+approvals:
+  - file_write
+  - shell
+budget:
+  maxTurns: 40
+  usd: 2
+params: {}

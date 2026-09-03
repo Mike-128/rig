@@ -1,0 +1,21 @@
+{
+  "name": "harness",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "harness": "./bin/harness.js"
+  },
+  "scripts": {
+    "cli": "tsx src/index.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "echo \"no cli tests\""
+  },
+  "dependencies": {
+    "@harness/core": "workspace:*",
+    "@harness/runtime": "workspace:*",
+    "@hono/node-server": "^1.14.0",
+    "commander": "^13.0.0",
+    "tsx": "^4.19.0"
+  }
+}

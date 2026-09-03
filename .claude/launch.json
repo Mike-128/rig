@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "runtime",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@harness/runtime", "dev"],
+      "port": 7777
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@harness/web", "dev"],
+      "port": 5173
+    }
+  ]
+}
