@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { AgentSummary, Model, ModelAlias, SkillSummary } from "@harness/core/types";
-import { MANAGEMENT_TOOLS, slugify, type AgentDefinitionInput, type ValidationIssue } from "@harness/core/agent";
+import type { AgentSummary, Model, ModelAlias, SkillSummary } from "@rig/core/types";
+import { MANAGEMENT_TOOLS, slugify, type AgentDefinitionInput, type ValidationIssue } from "@rig/core/agent";
 import { api } from "../api";
 
 type ModelRow = Model & { connectionName: string };
@@ -13,10 +13,10 @@ const TOOL_HELP: Record<string, string> = {
   web_fetch: "Fetch a public http(s) URL as text. Read-only.",
   shell: "Run a command in the workspace directory. Needs sandbox 1; the widest capability here.",
   load_skill: "Read the full instructions for an attached skill. Added automatically when you attach one.",
-  agent_list: "List the agents saved in this harness.",
+  agent_list: "List the agents saved in this rig.",
   agent_read: "Read another agent's definition.",
   agent_write: "Create or update agents. Gate this with approval.",
-  model_list: "See which models this harness can reach.",
+  model_list: "See which models this rig can reach.",
   skill_list: "List installed skills.",
   skill_write: "Create or replace skills. Gate this with approval.",
 };
@@ -435,7 +435,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
               </div>
             </div>
             <div className="field">
-              <span className="muted">Harness management tools — let this agent create and revise other agents and skills</span>
+              <span className="muted">Rig management tools — let this agent create and revise other agents and skills</span>
               <div className="checks">
                 {MANAGEMENT_TOOLS.map((t) => (
                   <label key={t} title={TOOL_HELP[t]}>

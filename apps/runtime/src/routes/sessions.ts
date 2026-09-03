@@ -3,7 +3,7 @@ import { streamSSE } from "hono/streaming";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { projectMessages, TERMINAL_EVENTS, type RunEvent } from "@harness/core";
+import { projectMessages, TERMINAL_EVENTS, type RunEvent } from "@rig/core";
 import type { AppContext } from "../context";
 import { newId } from "../ids";
 

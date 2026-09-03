@@ -4,7 +4,7 @@ import { AGENT_TOOL_NAMES } from "../../agent/tool-names";
 export const agentListTool: ToolSpec = {
   definition: {
     name: "agent_list",
-    description: "List the agents saved in this harness, with their slugs and versions.",
+    description: "List the agents saved in this rig, with their slugs and versions.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   sideEffect: false,
@@ -45,7 +45,7 @@ export const modelListTool: ToolSpec = {
   definition: {
     name: "model_list",
     description:
-      "List the models this harness can reach, with their connection names, entitlement status, and any aliases. Call this before choosing a model for an agent, so you only pick one that actually works.",
+      "List the models this rig can reach, with their connection names, entitlement status, and any aliases. Call this before choosing a model for an agent, so you only pick one that actually works.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   sideEffect: false,
@@ -98,7 +98,7 @@ export const agentWriteTool: ToolSpec = {
         tools: {
           type: "array",
           description:
-            "Tools the agent may use. file_read and web_fetch are read-only. file_write and shell change things and need sandbox level 1. The agent_* , model_list, and skill_* tools let the agent manage this harness, including creating further agents.",
+            "Tools the agent may use. file_read and web_fetch are read-only. file_write and shell change things and need sandbox level 1. The agent_* , model_list, and skill_* tools let the agent manage this rig, including creating further agents.",
           items: { type: "string", enum: TOOL_ENUM },
         },
         skills: {
@@ -148,7 +148,7 @@ export const agentWriteTool: ToolSpec = {
     const warnings = res.issues.filter((i) => i.severity === "warning");
     const warnText = warnings.length ? `\n\nWarnings:\n${warnings.map((w) => `- ${w.message}`).join("\n")}` : "";
     return {
-      output: `Saved agent "${res.slug}" as version ${res.version}. The user can run it from the Chat page by picking it in the agent list, or with: harness agent run ${res.slug} "..."\n\n${res.yaml ?? ""}${warnText}`,
+      output: `Saved agent "${res.slug}" as version ${res.version}. The user can run it from the Chat page by picking it in the agent list, or with: rig agent run ${res.slug} "..."\n\n${res.yaml ?? ""}${warnText}`,
     };
   },
 };

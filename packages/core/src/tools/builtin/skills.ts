@@ -48,7 +48,7 @@ export const loadSkillTool: ToolSpec = {
 export const skillListTool: ToolSpec = {
   definition: {
     name: "skill_list",
-    description: "List every skill installed in this harness, including ones not enabled for you. Use it when choosing skills to attach to an agent you are creating.",
+    description: "List every skill installed in this rig, including ones not enabled for you. Use it when choosing skills to attach to an agent you are creating.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   sideEffect: false,

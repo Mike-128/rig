@@ -1,4 +1,4 @@
-import type { RunEvent } from "@harness/core/types";
+import type { RunEvent } from "@rig/core/types";
 
 export class ApiError extends Error {
   constructor(

@@ -1,4 +1,4 @@
-import type { HarnessError, HarnessErrorKind } from "../types";
+import type { RigError, RigErrorKind } from "../types";
 
 /** SDKs render an empty error body as e.g. "429 status code (no body)", which tells a user nothing. */
 const BARE_STATUS = /^\d{3} status code \(no body\)\.?$/i;
@@ -21,8 +21,8 @@ function humanize(status: number | undefined, message: string): string {
   }
 }
 
-export function errorFromStatus(status: number | undefined, message: string): HarnessError {
-  let kind: HarnessErrorKind = "unknown";
+export function errorFromStatus(status: number | undefined, message: string): RigError {
+  let kind: RigErrorKind = "unknown";
   let retryable = false;
   if (status === 401) kind = "auth";
   else if (status === 403) kind = "forbidden";
@@ -47,10 +47,10 @@ export function isAbortError(err: unknown): boolean {
   );
 }
 
-export function cancelledError(): HarnessError {
+export function cancelledError(): RigError {
   return { kind: "cancelled", message: "Cancelled", retryable: false };
 }
 
-export function networkError(message: string): HarnessError {
+export function networkError(message: string): RigError {
   return { kind: "network", message, retryable: true };
 }

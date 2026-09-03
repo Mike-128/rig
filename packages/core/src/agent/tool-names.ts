@@ -18,5 +18,5 @@ export type BuiltinToolName = (typeof AGENT_TOOL_NAMES)[number];
 /** Tools with side effects. Approval-required by default when enabled. */
 export const SIDE_EFFECT_TOOLS: readonly BuiltinToolName[] = ["file_write", "shell", "agent_write", "skill_write"];
 
-/** Tools that manage the harness itself rather than the workspace. */
+/** Tools that manage the rig itself rather than the workspace. */
 export const MANAGEMENT_TOOLS: readonly BuiltinToolName[] = ["agent_list", "agent_read", "agent_write", "model_list", "skill_list", "skill_write"];

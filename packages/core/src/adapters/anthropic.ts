@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import type { Block, CanonicalRequest, HarnessError, Message, Model, StopReason, StreamEvent, Usage } from "../types";
+import type { Block, CanonicalRequest, RigError, Message, Model, StopReason, StreamEvent, Usage } from "../types";
 import type { AdapterConnection, ProviderAdapter } from "./types";
 import { cancelledError, errorFromStatus, isAbortError, networkError } from "./errors";
 import type { ProbeResult } from "../gateway/probe";
@@ -7,7 +7,7 @@ import { classifyProbeError } from "../gateway/probe";
 
 function makeClient(conn: AdapterConnection): Anthropic {
   return new Anthropic({
-    apiKey: "harness-proxy",
+    apiKey: "rig-proxy",
     baseURL: conn.baseUrl,
     defaultHeaders: conn.headers,
     timeout: conn.timeoutMs ?? 10 * 60 * 1000,
@@ -151,7 +151,7 @@ export const anthropicAdapter: ProviderAdapter = {
     return ids;
   },
 
-  normalizeError(err: unknown): HarnessError {
+  normalizeError(err: unknown): RigError {
     if (isAbortError(err)) return cancelledError();
     if (err instanceof Anthropic.APIConnectionError) return networkError(err.message);
     if (err instanceof Anthropic.APIError) return errorFromStatus(err.status, err.message);

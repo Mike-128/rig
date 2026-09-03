@@ -30,7 +30,7 @@ export function App() {
   return (
     <div className="app">
       <nav className="nav">
-        <div className="brand">Harness</div>
+        <div className="brand">Rig</div>
         <a className={route.page === "chat" ? "active" : ""} href="#/chat">
           Chat
         </a>

@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import type { Block, CanonicalRequest, HarnessError, Message, Model, StopReason, StreamEvent, Usage } from "../types";
+import type { Block, CanonicalRequest, RigError, Message, Model, StopReason, StreamEvent, Usage } from "../types";
 import type { AdapterConnection, ProviderAdapter } from "./types";
 import { cancelledError, errorFromStatus, isAbortError, networkError } from "./errors";
 import type { ProbeResult } from "../gateway/probe";
@@ -8,7 +8,7 @@ import { parseToolArguments } from "./tool-args";
 
 function makeClient(conn: AdapterConnection): OpenAI {
   return new OpenAI({
-    apiKey: "harness-proxy",
+    apiKey: "rig-proxy",
     baseURL: conn.baseUrl,
     defaultHeaders: conn.headers,
     timeout: conn.timeoutMs ?? 10 * 60 * 1000,
@@ -189,7 +189,7 @@ export const openaiAdapter: ProviderAdapter = {
     return ids;
   },
 
-  normalizeError(err: unknown): HarnessError {
+  normalizeError(err: unknown): RigError {
     if (isAbortError(err)) return cancelledError();
     if (err instanceof OpenAI.APIConnectionError) return networkError(err.message);
     if (err instanceof OpenAI.APIError) return errorFromStatus(err.status, err.message);

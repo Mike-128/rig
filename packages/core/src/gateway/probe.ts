@@ -1,4 +1,4 @@
-import type { EntitlementStatus, HarnessError } from "../types";
+import type { EntitlementStatus, RigError } from "../types";
 
 export interface ProbeResult {
   status: EntitlementStatus;
@@ -10,7 +10,7 @@ export interface ProbeResult {
  * Classify a probe outcome. A validation error (400) still proves the key reached the model,
  * so it counts as entitled. 401/403/404 do not.
  */
-export function classifyProbeError(err: HarnessError): EntitlementStatus {
+export function classifyProbeError(err: RigError): EntitlementStatus {
   switch (err.kind) {
     case "auth":
       return "unauthorized";

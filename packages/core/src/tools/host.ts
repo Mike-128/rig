@@ -27,7 +27,7 @@ export interface HostWriteResult {
 }
 
 /**
- * Capabilities the runtime lends to tools that manage the harness itself.
+ * Capabilities the runtime lends to tools that manage the rig itself.
  * Core declares the interface; the runtime implements it against its stores.
  */
 export interface HostServices {

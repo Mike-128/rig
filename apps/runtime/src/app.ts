@@ -44,7 +44,7 @@ export async function buildApp(overrides: Partial<RuntimeConfig> = {}, opts: { f
   };
   runs.attach(app);
   const interrupted = app.sessions.failInterrupted();
-  if (interrupted) console.log(`[harness] marked ${interrupted} interrupted run(s) as failed`);
+  if (interrupted) console.log(`[rig] marked ${interrupted} interrupted run(s) as failed`);
   seedDefaults(app);
 
   const hono = new Hono();
@@ -56,7 +56,7 @@ export async function buildApp(overrides: Partial<RuntimeConfig> = {}, opts: { f
   hono.route("/api/skills", skillRoutes(app));
   hono.route("/api", sessionRoutes(app));
   hono.onError((err, c) => {
-    console.error("[harness] unhandled", err);
+    console.error("[rig] unhandled", err);
     return c.json({ error: err.message }, 500);
   });
   return { app, hono };

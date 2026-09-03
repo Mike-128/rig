@@ -1,8 +1,8 @@
 import { Hono } from "hono";
-import { resolveUpstream, type Dialect } from "@harness/core";
+import { resolveUpstream, type Dialect } from "@rig/core";
 import type { AppContext } from "./context";
 
-const HOP_BY_HOP = new Set(["host", "content-length", "connection", "keep-alive", "transfer-encoding", "x-harness-proxy-token", "x-api-key", "authorization", "api-key", "ocp-apim-subscription-key"]);
+const HOP_BY_HOP = new Set(["host", "content-length", "connection", "keep-alive", "transfer-encoding", "x-rig-proxy-token", "x-api-key", "authorization", "api-key", "ocp-apim-subscription-key"]);
 const RESPONSE_STRIP = new Set(["content-encoding", "content-length", "transfer-encoding", "connection", "keep-alive"]);
 
 /**
@@ -18,7 +18,7 @@ export function proxyRoutes(app: AppContext): Hono {
   const r = new Hono();
 
   r.all("/:connectionId/*", async (c) => {
-    if (c.req.header("x-harness-proxy-token") !== app.config.proxyToken) return c.json({ error: "proxy token required" }, 401);
+    if (c.req.header("x-rig-proxy-token") !== app.config.proxyToken) return c.json({ error: "proxy token required" }, 401);
     const connectionId = c.req.param("connectionId");
     const conn = app.connections.get(connectionId);
     if (!conn) return c.json({ error: "unknown connection" }, 404);

@@ -1,8 +1,8 @@
-import { agentToYaml, type HostModelSummary, type HostServices, type HostWriteResult } from "@harness/core";
+import { agentToYaml, type HostModelSummary, type HostServices, type HostWriteResult } from "@rig/core";
 import type { AppContext } from "./context";
 
 /**
- * The runtime's implementation of the capabilities lent to harness-management tools.
+ * The runtime's implementation of the capabilities lent to rig-management tools.
  * Agents reach the agent, model, and skill stores only through this surface.
  */
 export function createHost(app: AppContext): HostServices {

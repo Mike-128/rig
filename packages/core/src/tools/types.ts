@@ -5,7 +5,7 @@ export interface ToolContext {
   workspace: string;
   sandbox: 0 | 1;
   signal: AbortSignal;
-  /** Present when the runtime lends harness-management capabilities to this run. */
+  /** Present when the runtime lends rig-management capabilities to this run. */
   host?: HostServices;
   /** Skills enabled for the running agent, by name. */
   enabledSkills?: string[];

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { agentFromYaml, validateAgentDefinition } from "@harness/core";
+import { agentFromYaml, validateAgentDefinition } from "@rig/core";
 import type { AppContext } from "../context";
 
 export function agentRoutes(app: AppContext): Hono {

@@ -86,9 +86,9 @@ export type StreamEvent =
   | { type: "tool_use_end"; id: string; name: string; input: unknown }
   | { type: "usage"; usage: Usage }
   | { type: "message_end"; stopReason: StopReason; message: Message; usage: Usage }
-  | { type: "error"; error: HarnessError };
+  | { type: "error"; error: RigError };
 
-export type HarnessErrorKind =
+export type RigErrorKind =
   | "auth"
   | "forbidden"
   | "not_found"
@@ -99,8 +99,8 @@ export type HarnessErrorKind =
   | "cancelled"
   | "unknown";
 
-export interface HarnessError {
-  kind: HarnessErrorKind;
+export interface RigError {
+  kind: RigErrorKind;
   message: string;
   status?: number;
   retryable: boolean;

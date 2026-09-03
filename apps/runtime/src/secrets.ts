@@ -9,7 +9,9 @@ export interface SecretStore {
   delete(id: string): Promise<void>;
 }
 
-const SERVICE = "harness";
+const SERVICE = "rig";
+/** Keychain service name used before the project was renamed. Read once, then copied forward. */
+const LEGACY_SERVICE = "harness";
 
 /** OS keychain via @napi-rs/keyring (Credential Manager on Windows, Keychain on macOS, Secret Service on Linux). */
 async function keyringStore(): Promise<SecretStore | undefined> {
@@ -26,10 +28,21 @@ async function keyringStore(): Promise<SecretStore | undefined> {
       },
       async get(id) {
         try {
-          return new mod.Entry(SERVICE, id).getPassword() ?? undefined;
+          const found = new mod.Entry(SERVICE, id).getPassword();
+          if (found !== null) return found;
         } catch {
-          return undefined;
+          /* fall through to the legacy lookup */
         }
+        try {
+          const legacy = new mod.Entry(LEGACY_SERVICE, id).getPassword();
+          if (legacy !== null) {
+            new mod.Entry(SERVICE, id).setPassword(legacy);
+            return legacy;
+          }
+        } catch {
+          /* nothing stored under either name */
+        }
+        return undefined;
       },
       async delete(id) {
         try {
@@ -44,7 +57,7 @@ async function keyringStore(): Promise<SecretStore | undefined> {
   }
 }
 
-/** Fallback: AES-256-GCM files under HARNESS_HOME/secrets with a per-install key. Weaker than the keychain; warned at startup. */
+/** Fallback: AES-256-GCM files under RIG_HOME/secrets with a per-install key. Weaker than the keychain; warned at startup. */
 function fileStore(home: string): SecretStore {
   const dir = path.join(home, "secrets");
   mkdirSync(dir, { recursive: true });

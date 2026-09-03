@@ -50,7 +50,7 @@ export const webFetchTool: ToolSpec = {
     const timeout = AbortSignal.timeout(30_000);
     const signal = AbortSignal.any([timeout, ctx.signal]);
     try {
-      const res = await fetch(u, { redirect: "follow", signal, headers: { "user-agent": "harness-web-fetch/0.1" } });
+      const res = await fetch(u, { redirect: "follow", signal, headers: { "user-agent": "rig-web-fetch/0.1" } });
       const ct = res.headers.get("content-type") ?? "";
       const raw = await res.text();
       const text = /html/i.test(ct) ? htmlToText(raw) : raw;

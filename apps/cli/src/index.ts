@@ -2,19 +2,19 @@ import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
-import type { AgentSummary, Connection, GatewayProfile, Model, ModelAlias, Session } from "@harness/core";
-import { agentFromYaml } from "@harness/core";
+import type { AgentSummary, Connection, GatewayProfile, Model, ModelAlias, Session } from "@rig/core";
+import { agentFromYaml } from "@rig/core";
 import { api, sse, BASE } from "./client";
 import { c, makeRenderer } from "./render";
 
-const program = new Command().name("harness").description("Provider-agnostic agent harness").version("0.1.0");
+const program = new Command().name("rig").description("Provider-agnostic agent rig").version("0.1.0");
 
 // ---- serve ----------------------------------------------------------------
 program
   .command("serve")
   .description("Start the local runtime (API, loopback proxy, and the built web UI if present)")
   .action(async () => {
-    await import("@harness/runtime/serve");
+    await import("@rig/runtime/serve");
   });
 
 // ---- models ---------------------------------------------------------------
@@ -36,7 +36,7 @@ models
   .action(async () => {
     const rows = await api<(Model & { connectionName: string })[]>("/models");
     const aliases = await api<ModelAlias[]>("/aliases");
-    if (!rows.length) return console.log("No models. Add a connection first: harness connections add --help");
+    if (!rows.length) return console.log("No models. Add a connection first: rig connections add --help");
     for (const m of rows) {
       const al = aliases.filter((a) => a.connectionId === m.connectionId && a.modelId === m.providerModelId).map((a) => `@${a.alias}`).join(" ");
       const status = m.status === "entitled" ? c.green(m.status) : m.status === "unprobed" || m.status === "listed" ? c.dim(m.status) : c.red(m.status);
@@ -72,7 +72,7 @@ connections
   .command("add")
   .description("Add a connection. The key is read from --key-env, --key-stdin, or a hidden prompt; it is stored in the OS keychain.")
   .requiredOption("--name <name>", "connection name")
-  .requiredOption("--profile <id>", "gateway profile id (see: harness models profiles)")
+  .requiredOption("--profile <id>", "gateway profile id (see: rig models profiles)")
   .option("--key-env <VAR>", "environment variable holding the key")
   .option("--key-stdin", "read the key from stdin")
   .option("--base-url <url>", "override the profile base URL")

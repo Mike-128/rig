@@ -9,8 +9,8 @@ import {
   toSummary,
   type Skill,
   type SkillSummary,
-} from "@harness/core";
-import { resolveInWorkspace } from "@harness/core";
+} from "@rig/core";
+import { resolveInWorkspace } from "@rig/core";
 
 export interface SkillIssue {
   dir: string;
@@ -19,7 +19,7 @@ export interface SkillIssue {
 
 /**
  * Skills are folders holding SKILL.md plus optional resources.
- * Bundled skills ship with the app; user skills live under HARNESS_HOME/skills and win on name collisions.
+ * Bundled skills ship with the app; user skills live under RIG_HOME/skills and win on name collisions.
  */
 export class SkillStore {
   private issues: SkillIssue[] = [];

@@ -1,4 +1,4 @@
-import type { Run, RunEvent, RunEventBody, RunStatus, Session, SessionKind, Usage } from "@harness/core";
+import type { Run, RunEvent, RunEventBody, RunStatus, Session, SessionKind, Usage } from "@rig/core";
 import { json, nowIso, type Db } from "../db";
 
 interface SessionRow {

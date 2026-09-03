@@ -1,7 +1,7 @@
-# Provider-Agnostic Agent Harness — High-Level Design (Draft v0.6)
+# Rig — Provider-Agnostic Agent Harness, High-Level Design (Draft v0.6)
 
 Status: draft for review. Sections 14.1 to 14.3 are implemented in this repo, plus skills (6.11) and
-conversational agent creation via harness-management tools, which arrived earlier than the phase table predicted.
+conversational agent creation via rig-management tools, which arrived earlier than the phase table predicted.
 Date: 2026-09-02
 Changes since v0.5: added section 14, the first build slice, with a definition of done covering model probing plus creating, saving, running, and replaying a user-designed agent on both dialects.
 Changes since v0.4: two entry points (Chat and Workbench) on one runtime, with chat-to-agent escalation through detached tasks (section 8); Session kinds and task events added; clients (web, CLI/TUI, IDE later) defined; phases, decisions, and questions updated.
@@ -44,8 +44,8 @@ Control Plane (governs and observes runtimes; never holds user keys by default)
 
 Consequences:
 
-- The harness never sees provider keys. It only ever holds what the user gives it, on the user's device.
-- Usage limits are enforced upstream. The harness meters what it observes for attribution and dashboards, not enforcement.
+- The rig never sees provider keys. It only ever holds what the user gives it, on the user's device.
+- Usage limits are enforced upstream. The rig meters what it observes for attribution and dashboards, not enforcement.
 - One key -> many models -> many endpoints -> possibly many dialects. `dialect` and `route` live on the Model; `auth` lives on the Connection.
 - The control plane is an observability and kill-switch layer over runtimes, not a proxy in the request path and not a place where agents are operated. Model traffic never transits it, and it never holds model keys.
 
@@ -144,7 +144,7 @@ interface ProviderAdapter {
   complete(req: CanonicalRequest, conn: ResolvedConnection): Promise<CanonicalResponse>
   countTokens?(req: CanonicalRequest, conn: ResolvedConnection): Promise<number>
   listModels?(conn: ResolvedConnection): Promise<DiscoveredModel[]>
-  normalizeError(err: unknown): HarnessError   // retryable vs terminal, rate-limit, auth, content-filter
+  normalizeError(err: unknown): RigError   // retryable vs terminal, rate-limit, auth, content-filter
 }
 ```
 
@@ -173,7 +173,7 @@ Streaming through APIM requires the gateway to not buffer SSE, and the vendor ag
 
 #### What the end user needs for an APIM virtual key
 
-In principle: the key and knowledge of which endpoint to call per model. In practice a client needs five facts, and the harness should make the user supply only the first:
+In principle: the key and knowledge of which endpoint to call per model. In practice a client needs five facts, and the rig should make the user supply only the first:
 
 | # | Fact | Why it is needed | Who supplies it |
 |---|---|---|---|
@@ -183,7 +183,7 @@ In principle: the key and knowledge of which endpoint to call per model. In prac
 | 4 | Per-model route, dialect, and the `model` string to put in the body | The route selects the model on the gateway side, but the body still needs a valid `model` field for Anthropic and OpenAI-shaped APIs, and Azure routes need an `api-version` query. The dialect decides which request shape to send | Route catalog |
 | 5 | Route behaviors: streaming allowed, beta headers passed through, extra required headers | Decides which engines can use the model and whether streaming is offered in the UI | Route catalog, confirmed by the probe |
 
-Everything except the key is static per gateway, so it belongs in a **gateway profile** that the platform team publishes once and the harness ships or fetches:
+Everything except the key is static per gateway, so it belongs in a **gateway profile** that the platform team publishes once and the rig ships or fetches:
 
 ```json
 {
@@ -235,7 +235,7 @@ The native engine may call adapters directly or go through the proxy; going thro
 
 ### 6.4 Runtime engines
 
-The backbone of the harness is the engine-neutral **Agent Definition** plus the **Engine contract** below. Vendor agent SDKs are engines that execute a definition; they do not own agent management, because neither the Claude Agent SDK nor the OpenAI Agents SDK stores, versions, shares, or governs agents. That layer is ours. Anthropic's hosted Managed Agents does manage agents, but it is not reachable through an arbitrary gateway, so it is a later option for direct connections only.
+The backbone of the rig is the engine-neutral **Agent Definition** plus the **Engine contract** below. Vendor agent SDKs are engines that execute a definition; they do not own agent management, because neither the Claude Agent SDK nor the OpenAI Agents SDK stores, versions, shares, or governs agents. That layer is ours. Anthropic's hosted Managed Agents does manage agents, but it is not reachable through an arbitrary gateway, so it is a later option for direct connections only.
 
 ```ts
 interface RuntimeEngine {
@@ -259,7 +259,7 @@ Every engine emits the same `RunEvent` stream, so the run console, trace, teleme
 
 Engine selection: explicit on the Agent Definition, with `auto` picking by model dialect and tool needs. `supports()` is validated at save time so a shared agent cannot be bound to a model its engine cannot use.
 
-Rule: the native engine is the only truly provider-agnostic one and must stay feature-complete for chat and tool use. The vendor engines add depth for their own models and are never required for the harness to function.
+Rule: the native engine is the only truly provider-agnostic one and must stay feature-complete for chat and tool use. The vendor engines add depth for their own models and are never required for the rig to function.
 
 ### 6.5 Enforcement points
 
@@ -322,10 +322,10 @@ A sub-agent is a child Run with its own fresh context, its own budget, and possi
 
 **Engine mapping.**
 
-| Engine | Native sub-agent feature | How the harness uses it |
+| Engine | Native sub-agent feature | How the rig uses it |
 |---|---|---|
 | native | none; the delegation tools above are the mechanism | Direct |
-| claude-agent-sdk | Built-in subagents (defined programmatically or as agent files) with a task tool; subagent start/stop hooks | The runtime materializes the definition's `subagents` into the SDK's agent configuration so the SDK's own delegation works, and mirrors each SDK subagent into a child Run via the hooks so tracing and halts stay uniform. The harness delegation tools are also exposed through MCP for cross-engine children. |
+| claude-agent-sdk | Built-in subagents (defined programmatically or as agent files) with a task tool; subagent start/stop hooks | The runtime materializes the definition's `subagents` into the SDK's agent configuration so the SDK's own delegation works, and mirrors each SDK subagent into a child Run via the hooks so tracing and halts stay uniform. The rig delegation tools are also exposed through MCP for cross-engine children. |
 | openai-agents | Agents-as-tools and handoffs | Declared sub-agents become agents-as-tools; each invocation is wrapped as a child Run. |
 
 ### 6.9 Parallel execution and scheduling
@@ -376,7 +376,7 @@ Skills follow the Agent Skills format: a folder containing `SKILL.md` with front
 |---|---|
 | native | Steps 1 to 3 above, implemented in the context builder and built-in tools |
 | claude-agent-sdk | The SDK supports the same skill folder format natively. The runtime materializes the agent's enabled skills into the settings directory it points the SDK at, so the SDK's own skill loading and invocation apply. |
-| openai-agents | Steps 1 to 3 via the harness tools wrapped as function tools |
+| openai-agents | Steps 1 to 3 via the rig tools wrapped as function tools |
 
 **Skill library.** Sources: bundled starter skills, user-level and project-level directories, git URLs (pinned to a commit), and zip import. Every skill is identified by content hash; an agent definition pins skills by name and hash, so a shared definition behaves the same on another machine once the skill is fetched. The runtime fetches missing skills on import and reports which are unavailable.
 
@@ -454,7 +454,7 @@ Modes: `pause` (suspend at the next enforcement point, resumable) and `kill` (ab
 
 Enforcement: the command arrives on the control channel, is written to local halt state, and takes effect at the next enforcement point (6.5), plus immediate abort of in-flight streams for `kill`. The local gateway proxy also refuses traffic for the halted scope, which makes the stop hold even for engines whose hooks are bypassed. Every affected run gets a `halted` event with the reason and issuer so the user sees why. Commands are idempotent and carry a sequence number so a reconnecting runtime replays what it missed.
 
-Disabling a connection in the harness is a local block; true revocation is done at APIM. The console can link to both.
+Disabling a connection in the rig is a local block; true revocation is done at APIM. The console can link to both.
 
 ### 7.4 Telemetry
 
@@ -498,7 +498,7 @@ The reverse direction also exists: an agent in the workbench can `notify_chat` w
 All clients talk to the local runtime's API. None of them embed engines or keys.
 
 - **Web UI** served on localhost: Chat and Workbench plus the catalog, library, and settings surfaces below. Optional Tauri desktop shell for tray presence and auto-start.
-- **CLI / TUI**: `harness chat` (terminal chat), `harness code` (terminal-first workbench in the style of Claude Code, attached to the current directory), `harness run <agent> "<input>"` for scripting, `harness tasks` to list and follow background tasks. The TUI is the natural home for the coding workflow and for users who live in the terminal.
+- **CLI / TUI**: `rig chat` (terminal chat), `rig code` (terminal-first workbench in the style of Claude Code, attached to the current directory), `rig run <agent> "<input>"` for scripting, `rig tasks` to list and follow background tasks. The TUI is the natural home for the coding workflow and for users who live in the terminal.
 - **IDE extension** (later): opens workbench sessions against the editor's workspace, surfaces diffs and approvals inline.
 
 ### 8.4 Local UI surfaces
@@ -543,8 +543,8 @@ Why TypeScript: both vendor SDKs, both vendor agent SDKs, and the MCP SDK are fi
 | Phase | Outcome | Scope |
 |---|---|---|
 | **0. Spike** | Prove the chain and the engine strategy | Canonical types; `anthropic.messages` and `openai.chat` adapters; minimal local gateway proxy; CLI chat through a real APIM virtual key with a gateway profile. Claude Agent SDK pointed at the proxy: verify beta-header passthrough and SSE not buffered. Confirm whether Entra JWT is required alongside the key. |
-| **1. Local catalog + chat** | A user can register keys and talk to their models | Local runtime with SQLite and keychain, gateway profiles and route catalog, entitlement probe, Model Catalog UI, Chat entry point with streaming and compare mode, `harness chat` CLI, local usage metering. Standalone mode only. |
-| **2. Agents + workbench** | A user can build and run agents locally, and escalate from chat | Agent Definition and engine contract; native engine; Claude Agent SDK engine; OpenAI Agents engine; MCP host and built-in packs; sandbox levels 0 to 2; local policy engine; scheduler with concurrency limits and per-connection backoff; Workbench entry point and `harness code` TUI; `start_task` escalation with brief, task cards, and `notify_chat`; Agent Builder with export/import; Run Console with trace and approvals. |
+| **1. Local catalog + chat** | A user can register keys and talk to their models | Local runtime with SQLite and keychain, gateway profiles and route catalog, entitlement probe, Model Catalog UI, Chat entry point with streaming and compare mode, `rig chat` CLI, local usage metering. Standalone mode only. |
+| **2. Agents + workbench** | A user can build and run agents locally, and escalate from chat | Agent Definition and engine contract; native engine; Claude Agent SDK engine; OpenAI Agents engine; MCP host and built-in packs; sandbox levels 0 to 2; local policy engine; scheduler with concurrency limits and per-connection backoff; Workbench entry point and `rig code` TUI; `start_task` escalation with brief, task cards, and `notify_chat`; Agent Builder with export/import; Run Console with trace and approvals. |
 | **2b. Multi-agent and skills** | Teams of agents and reusable capability | Run tree and delegation tools (`spawn_agent`, `spawn_parallel`, `await_agents`, `cancel_agent`); declared sub-agents with inheritance rules; isolated workspaces; handoffs; skills with progressive disclosure on all three engines; skill library and import; run tree UI with lanes and roll-ups; orchestration agent templates. |
 | **3. Control plane** | Enterprise observability and kill switch | Enrollment and SSO; control channel with lease and fail modes; kill switch at all scopes with subtree cascade, backstopped by the proxy; telemetry ingest and OTel export; fleet console and dashboards; audit. Optional guardrail floors, catalog distribution, and skill source allowlist. |
 | **3b. Workflows** | Declarative orchestration | Workflow DSL and runner (agent, tool, parallel, condition, human, loop steps); event-sourced workflow state with pause and resume; triggers (manual, schedule, webhook, file watch); visual editor; blackboard. |
@@ -571,14 +571,14 @@ Why TypeScript: both vendor SDKs, both vendor agent SDKs, and the MCP SDK are fi
 
 1. Does the APIM API validate an Entra ID JWT in addition to the subscription key? This decides whether the runtime needs an interactive sign-in for model access.
 2. Do the Anthropic-shaped routes use the standard `/v1/messages` path layout under some base, and are beta headers passed through?
-3. Will the platform team publish gateway profiles, or should the harness ship a starter profile and let users export theirs?
+3. Will the platform team publish gateway profiles, or should the rig ship a starter profile and let users export theirs?
 4. Fail mode default for enrolled runtimes: `fail_open` with a grace window, or `fail_closed`?
 5. Should the control plane distribute guardrail floors at all, or stay purely observe-and-halt in the first release?
 6. Is a desktop shell (tray app, auto-start) wanted in the first release, or is a daemon plus browser enough?
 7. Which built-in tools are must-haves for the first agent use cases?
 8. Is there an existing OpenTelemetry collector or SIEM the control plane should export to from day one?
 9. Should workflows (level 3 orchestration) land before the control plane, or after? The doc orders them after, on the assumption that governance of single agents matters sooner than declarative pipelines.
-10. Is there an existing skill catalog or repo convention in the org the harness should import from on day one?
+10. Is there an existing skill catalog or repo convention in the org the rig should import from on day one?
 11. Are scheduled and webhook-triggered workflows expected on laptops (which may be asleep), or is that the first reason to add a headless execution host?
 12. Is the coding workbench terminal-first (the TUI is primary, the web view secondary) or GUI-first? The doc builds both on the same API but the first one to polish is a product call.
 13. Should escalation from chat default to confirming the brief every time, or auto-start for a trusted `coder` definition once the user has opted in?
@@ -604,7 +604,7 @@ Both dialects must pass steps 1 and 4: one agent on an Anthropic-dialect model a
 - `apps/runtime`: Hono local API, SQLite via Drizzle, keychain, loopback proxy (key injection and route mapping only), scheduler in its simplest form (one queue, global concurrency limit, per-run abort).
 - Built-in tools: file read, file write inside the workspace, web fetch, shell at sandbox level 1. Shell and file write are approval-required by default.
 - `apps/web`: three pages, Chat (with agent switcher and approval prompts), Agent Builder, Model Catalog. Plain React, streaming over SSE.
-- `apps/cli`: `harness chat`, `harness agent list | create <file> | run <name> "<input>"`, `harness models probe`.
+- `apps/cli`: `rig chat`, `rig agent list | create <file> | run <name> "<input>"`, `rig models probe`.
 
 ### 14.3 Out of scope for v1
 
@@ -614,7 +614,7 @@ Vendor engines, sub-agents and parallel spawning, skills, handoffs, workflows, t
 
 - TypeScript, pnpm monorepo, Node 22, Hono, better-sqlite3 with Drizzle, Zod for schemas shared between runtime, web, and CLI, Vitest.
 - Windows is the primary development target; keychain via DPAPI with other backends stubbed.
-- The `Harness` directory becomes the repository root.
+- The `Rig` directory becomes the repository root.
 - Tested against direct provider keys first; the APIM profile and the Entra-token question are folded in as soon as a real virtual key is available.
 
 ## 15. Risks
@@ -624,7 +624,7 @@ Vendor engines, sub-agents and parallel spawning, skills, handoffs, workflows, t
 - **Runaway delegation.** Recursive or wide fan-out can burn a budget fast, especially in parallel against a rate-limited key. Mitigation: runtime-enforced depth and fan-out limits, budgets that roll up to the root, per-connection concurrency, and a halt cascade.
 - **Workflow engine creep.** Declarative workflows tend to grow into a programming language. Mitigation: the fixed step-type list, no code steps, and a stated plan to adopt an existing durable-execution engine if the needs exceed the DSL.
 - **Skill supply chain.** Skills carry scripts and can be imported from git. Mitigation: hash pinning, sandbox levels, source allowlists via guardrails, telemetry on load and execution.
-- **Governance bypass.** A user could run the vendor SDK outside the harness. Mitigation: the harness is the sanctioned path; the gateway remains the hard control. Position the control plane as visibility plus soft enforcement, not the only enforcement.
+- **Governance bypass.** A user could run the vendor SDK outside the rig. Mitigation: the rig is the sanctioned path; the gateway remains the hard control. Position the control plane as visibility plus soft enforcement, not the only enforcement.
 - **Lowest-common-denominator drift** in the canonical layer. Mitigation: capability flags plus an `extensions` bag; core fields stay small.
 - **Offline telemetry gaps.** Mitigation: disk-backed buffers with bounded size and oldest-first eviction, surfaced in the fleet console as "stale since".
 - **Tool safety.** Mitigation: approval gates for outward-facing tools, sandbox floors by policy, egress allowlists, audit.

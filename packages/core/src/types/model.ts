@@ -35,7 +35,7 @@ export interface AuthSpec {
 }
 
 export interface ProfileModelEntry {
-  /** Harness-facing id, unique within the profile. */
+  /** Rig-facing id, unique within the profile. */
   id: string;
   displayName?: string;
   dialect: Dialect;

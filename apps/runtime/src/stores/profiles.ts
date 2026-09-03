@@ -1,8 +1,8 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { BUILTIN_PROFILES, type GatewayProfile } from "@harness/core";
+import { BUILTIN_PROFILES, type GatewayProfile } from "@rig/core";
 
-/** Built-in profiles plus any JSON profiles dropped into HARNESS_HOME/profiles. */
+/** Built-in profiles plus any JSON profiles dropped into RIG_HOME/profiles. */
 export class ProfileStore {
   constructor(private dir: string) {}
 

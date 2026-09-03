@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Skill, SkillSummary } from "@harness/core/types";
+import type { Skill, SkillSummary } from "@rig/core/types";
 import { api } from "../api";
 
 interface SkillsResponse {

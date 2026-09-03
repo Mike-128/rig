@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { DEFAULT_CAPABILITIES, type Dialect } from "@harness/core";
+import { DEFAULT_CAPABILITIES, type Dialect } from "@rig/core";
 import type { AppContext } from "../context";
 import { discoverListed, ensureDefaultAlias, entryToModel, probeConnection, probeModel, seedFromProfile } from "../catalog";
 import { newId } from "../ids";

@@ -9,7 +9,7 @@ import {
   type ApprovalDecision,
   type Block,
   type CanonicalRequest,
-  type HarnessError,
+  type RigError,
   type Message,
   type Model,
   type RunEventBody,
@@ -36,7 +36,7 @@ export interface EngineInput {
   signal: AbortSignal;
   /** Skills installed on this machine; the agent's own list decides which are advertised. */
   skills?: SkillSummary[];
-  /** Lends harness-management capabilities to tools that ask for them. */
+  /** Lends rig-management capabilities to tools that ask for them. */
   host?: HostServices;
   /** Suspends the run until the user decides. */
   requestApproval(callId: string, name: string, input: unknown): Promise<ApprovalDecision>;
@@ -60,7 +60,7 @@ export async function* runNativeEngine(input: EngineInput): AsyncGenerator<RunEv
 
   yield { type: "user_message", message: messages[messages.length - 1] };
 
-  const fail = (error: HarnessError): RunEventBody => ({ type: "run_failed", error, usage: cumulative, costUsd: cost });
+  const fail = (error: RigError): RunEventBody => ({ type: "run_failed", error, usage: cumulative, costUsd: cost });
 
   while (true) {
     if (signal.aborted) {
@@ -88,7 +88,7 @@ export async function* runNativeEngine(input: EngineInput): AsyncGenerator<RunEv
 
     let assistant: Message | undefined;
     let stopReason: StopReason = "other";
-    let turnError: HarnessError | undefined;
+    let turnError: RigError | undefined;
 
     for await (const ev of adapter.stream(req, connection, model, signal)) {
       switch (ev.type) {

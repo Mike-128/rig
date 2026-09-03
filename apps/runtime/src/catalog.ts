@@ -8,7 +8,7 @@ import {
   type Model,
   type ModelAlias,
   type ProfileModelEntry,
-} from "@harness/core";
+} from "@rig/core";
 import type { AppContext } from "./context";
 import { modelId } from "./stores/models";
 import { nowIso } from "./db";
@@ -34,7 +34,7 @@ export function entryToModel(conn: Connection, e: ProfileModelEntry, origin: Mod
 export function adapterConnection(app: AppContext, conn: Connection, model: Model): AdapterConnection {
   return {
     baseUrl: proxyBaseUrl(app.config.proxyOrigin, conn.id, model.dialect),
-    headers: { "x-harness-proxy-token": app.config.proxyToken },
+    headers: { "x-rig-proxy-token": app.config.proxyToken },
     modelId: model.providerModelId,
   };
 }

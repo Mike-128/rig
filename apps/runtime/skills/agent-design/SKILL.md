@@ -1,6 +1,6 @@
 ---
 name: agent-design
-description: How to design a good agent for this harness — choosing tools, sandbox level, approvals, budgets, and writing instructions that actually steer behavior. Load this before creating or revising an agent definition.
+description: How to design a good agent for this rig — choosing tools, sandbox level, approvals, budgets, and writing instructions that actually steer behavior. Load this before creating or revising an agent definition.
 ---
 
 # Designing an agent
@@ -37,7 +37,7 @@ Grant the fewest tools that let the agent finish its job.
 | `model_list` | The agent chooses models, usually alongside `agent_write` | Read-only |
 | `skill_list`, `skill_write` | The agent manages reusable skills | `skill_write` should be in `approvals` |
 
-An agent that only answers questions needs no tools at all. Do not grant `shell` "just in case" — it is the widest capability in the harness.
+An agent that only answers questions needs no tools at all. Do not grant `shell` "just in case" — it is the widest capability in the rig.
 
 ## Sandbox and approvals
 

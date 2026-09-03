@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { GatewayProfile, Model, RunEvent, Session } from "@harness/core";
+import type { GatewayProfile, Model, RunEvent, Session } from "@rig/core";
 import { startServer, type RunningServer } from "../src/server";
 import { GOOD_KEY, startMockUpstream } from "./mock-upstream";
 
@@ -40,7 +40,7 @@ async function waitForRun(runId: string, timeoutMs = 10_000): Promise<{ status: 
 }
 
 beforeAll(async () => {
-  home = mkdtempSync(path.join(os.tmpdir(), "harness-test-"));
+  home = mkdtempSync(path.join(os.tmpdir(), "rig-test-"));
   upstream = await startMockUpstream();
   const profile: GatewayProfile = {
     id: "mock-gateway",
@@ -99,7 +99,7 @@ describe("v1 definition of done", () => {
     // the upstream saw the real key, never the proxy token
     const last = upstream.requests.at(-1)!;
     expect(last.headers["x-api-key"]).toBe(GOOD_KEY);
-    expect(last.headers["x-harness-proxy-token"]).toBeUndefined();
+    expect(last.headers["x-rig-proxy-token"]).toBeUndefined();
 
     // an existing binding is never overwritten by a later probe
     await api("/aliases/default", { method: "PUT", json: { connectionId: connId, modelId: "mock-gpt" } });

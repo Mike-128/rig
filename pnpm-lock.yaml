@@ -23,10 +23,10 @@ importers:
 
   apps/cli:
     dependencies:
-      '@harness/core':
+      '@rig/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@harness/runtime':
+      '@rig/runtime':
         specifier: workspace:*
         version: link:../runtime
       '@hono/node-server':
@@ -41,7 +41,7 @@ importers:
 
   apps/runtime:
     dependencies:
-      '@harness/core':
+      '@rig/core':
         specifier: workspace:*
         version: link:../../packages/core
       '@hono/node-server':
@@ -59,7 +59,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@harness/core':
+      '@rig/core':
         specifier: workspace:*
         version: link:../../packages/core
       react:

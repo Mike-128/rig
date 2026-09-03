@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { agentFromYaml, agentToYaml, validateAgentDefinition, type AgentDefinition, type AgentSummary, type ValidateOptions, type ValidationResult } from "@harness/core";
+import { agentFromYaml, agentToYaml, validateAgentDefinition, type AgentDefinition, type AgentSummary, type ValidateOptions, type ValidationResult } from "@rig/core";
 import { nowIso, type Db } from "../db";
 
 /**

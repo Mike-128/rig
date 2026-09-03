@@ -4,13 +4,13 @@
     {
       "name": "runtime",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@harness/runtime", "dev"],
+      "runtimeArgs": ["--filter", "@rig/runtime", "dev"],
       "port": 7777
     },
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@harness/web", "dev"],
+      "runtimeArgs": ["--filter", "@rig/web", "dev"],
       "port": 5173
     }
   ]

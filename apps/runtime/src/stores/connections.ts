@@ -1,4 +1,4 @@
-import type { AuthSpec, Connection, ConnectionKind } from "@harness/core";
+import type { AuthSpec, Connection, ConnectionKind } from "@rig/core";
 import { json, nowIso, type Db } from "../db";
 
 interface Row {

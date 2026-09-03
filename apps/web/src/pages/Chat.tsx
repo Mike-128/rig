@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AgentSummary, RunEvent, Session } from "@harness/core/types";
+import type { AgentSummary, RunEvent, Session } from "@rig/core/types";
 import { api, streamSession } from "../api";
 import { emptyThread, reduceAll, reduceEvent, type ThreadItem, type ThreadState } from "../events";
 

@@ -1,18 +1,18 @@
 {
-  "name": "harness-monorepo",
+  "name": "rig-monorepo",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "packageManager": "pnpm@11.25.0",
   "scripts": {
-    "dev": "pnpm -r --parallel --filter @harness/runtime --filter @harness/web dev",
-    "dev:runtime": "pnpm --filter @harness/runtime dev",
-    "dev:web": "pnpm --filter @harness/web dev",
+    "dev": "pnpm -r --parallel --filter @rig/runtime --filter @rig/web dev",
+    "dev:runtime": "pnpm --filter @rig/runtime dev",
+    "dev:web": "pnpm --filter @rig/web dev",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "harness": "pnpm --filter harness cli --",
-    "build": "pnpm --filter @harness/web build",
-    "start": "pnpm --filter @harness/web build && pnpm --filter @harness/runtime start"
+    "rig": "pnpm --filter rig cli --",
+    "build": "pnpm --filter @rig/web build",
+    "start": "pnpm --filter @rig/web build && pnpm --filter @rig/runtime start"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

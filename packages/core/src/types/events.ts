@@ -1,4 +1,4 @@
-import type { HarnessError, Message, StopReason, Usage } from "./canonical";
+import type { RigError, Message, StopReason, Usage } from "./canonical";
 
 export type RunStatus =
   | "queued"
@@ -30,7 +30,7 @@ export type RunEventBody =
   | { type: "usage"; usage: Usage; cumulative: Usage; costUsd: number }
   | { type: "warning"; message: string }
   | { type: "run_completed"; stopReason: StopReason; usage: Usage; costUsd: number; turns: number }
-  | { type: "run_failed"; error: HarnessError; usage: Usage; costUsd: number }
+  | { type: "run_failed"; error: RigError; usage: Usage; costUsd: number }
   | { type: "run_cancelled"; usage: Usage; costUsd: number };
 
 export type RunEvent = RunEventBody & {

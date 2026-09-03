@@ -1,5 +1,5 @@
 # Example agent: a small coding helper with full local tools and approval gates on the risky ones.
-# Import with:  pnpm harness agent create examples/coder.yaml
+# Import with:  pnpm rig agent create examples/coder.yaml
 name: Coder
 slug: coder
 description: Reads and edits files in the workspace and runs commands, asking before writes and shell.

@@ -1,10 +1,10 @@
 {
-  "name": "harness",
+  "name": "rig",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "bin": {
-    "harness": "./bin/harness.js"
+    "rig": "./bin/rig.js"
   },
   "scripts": {
     "cli": "tsx src/index.ts",
@@ -12,8 +12,8 @@
     "test": "echo \"no cli tests\""
   },
   "dependencies": {
-    "@harness/core": "workspace:*",
-    "@harness/runtime": "workspace:*",
+    "@rig/core": "workspace:*",
+    "@rig/runtime": "workspace:*",
     "@hono/node-server": "^1.14.0",
     "commander": "^13.0.0",
     "tsx": "^4.19.0"

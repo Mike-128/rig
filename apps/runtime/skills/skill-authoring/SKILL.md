@@ -1,6 +1,6 @@
 ---
 name: skill-authoring
-description: How to write a good skill for this harness — what belongs in the description versus the body, and how to structure reusable task instructions. Load this before creating or editing a skill.
+description: How to write a good skill for this rig — what belongs in the description versus the body, and how to structure reusable task instructions. Load this before creating or editing a skill.
 ---
 
 # Writing a skill

@@ -1,4 +1,4 @@
-import type { CanonicalRequest, Dialect, HarnessError, Model, StreamEvent } from "../types";
+import type { CanonicalRequest, Dialect, RigError, Model, StreamEvent } from "../types";
 import type { ProbeResult } from "../gateway/probe";
 
 /** How an adapter reaches a model: through the loopback proxy, never with the real key. */
@@ -18,5 +18,5 @@ export interface ProviderAdapter {
   stream(req: CanonicalRequest, conn: AdapterConnection, model: Model, signal?: AbortSignal): AsyncIterable<StreamEvent>;
   probe(conn: AdapterConnection, model: Model, signal?: AbortSignal): Promise<ProbeResult>;
   listModels(conn: AdapterConnection, signal?: AbortSignal): Promise<string[]>;
-  normalizeError(err: unknown): HarnessError;
+  normalizeError(err: unknown): RigError;
 }

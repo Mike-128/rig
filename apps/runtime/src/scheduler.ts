@@ -17,7 +17,7 @@ import {
   type RunEvent,
   type RunEventBody,
   type Session,
-} from "@harness/core";
+} from "@rig/core";
 import type { AppContext } from "./context";
 import { adapterConnection } from "./catalog";
 import { createHost } from "./host";

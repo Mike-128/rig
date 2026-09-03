@@ -1,5 +1,5 @@
-import type { RunEvent } from "@harness/core";
-import { TERMINAL_EVENTS } from "@harness/core";
+import type { RunEvent } from "@rig/core";
+import { TERMINAL_EVENTS } from "@rig/core";
 
 const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
 const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;

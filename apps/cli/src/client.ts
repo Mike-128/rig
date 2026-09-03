@@ -1,6 +1,6 @@
-import type { RunEvent } from "@harness/core";
+import type { RunEvent } from "@rig/core";
 
-export const BASE = (process.env.HARNESS_URL ?? "http://127.0.0.1:7777").replace(/\/+$/, "");
+export const BASE = (process.env.RIG_URL ?? "http://127.0.0.1:7777").replace(/\/+$/, "");
 
 export async function api<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
   const headers: Record<string, string> = { ...(init?.headers as Record<string, string>) };
@@ -13,7 +13,7 @@ export async function api<T>(path: string, init?: RequestInit & { json?: unknown
   try {
     res = await fetch(`${BASE}/api${path}`, { ...init, headers, body });
   } catch (e) {
-    throw new Error(`Cannot reach the runtime at ${BASE}. Start it with "harness serve" (or pnpm dev:runtime). ${(e as Error).message}`);
+    throw new Error(`Cannot reach the runtime at ${BASE}. Start it with "rig serve" (or pnpm dev:runtime). ${(e as Error).message}`);
   }
   const text = await res.text();
   let data: unknown = text;

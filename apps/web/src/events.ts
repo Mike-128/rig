@@ -1,4 +1,4 @@
-import type { RunEvent, Usage } from "@harness/core/types";
+import type { RunEvent, Usage } from "@rig/core/types";
 
 export type ThreadItem =
   | { kind: "user"; key: string; text: string }

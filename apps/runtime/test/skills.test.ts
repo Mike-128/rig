@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { GatewayProfile, RunEvent, Session, SkillSummary } from "@harness/core";
+import type { GatewayProfile, RunEvent, Session, SkillSummary } from "@rig/core";
 import { startServer, type RunningServer } from "../src/server";
 import { GOOD_KEY, startMockUpstream } from "./mock-upstream";
 
@@ -52,7 +52,7 @@ async function runToEnd(sessionId: string, input: string) {
 }
 
 beforeAll(async () => {
-  home = mkdtempSync(path.join(os.tmpdir(), "harness-skills-"));
+  home = mkdtempSync(path.join(os.tmpdir(), "rig-skills-"));
   upstream = await startMockUpstream();
   const profile: GatewayProfile = {
     id: "mock-gateway",

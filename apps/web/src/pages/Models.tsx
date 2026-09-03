@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { Connection, GatewayProfile, Model, ModelAlias } from "@harness/core/types";
+import type { Connection, GatewayProfile, Model, ModelAlias } from "@rig/core/types";
 import { api } from "../api";
 
 type ModelRow = Model & { connectionName: string };

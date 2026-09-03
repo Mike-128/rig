@@ -1,4 +1,4 @@
-import type { AgentDefinitionInput } from "@harness/core";
+import type { AgentDefinitionInput } from "@rig/core";
 import type { AppContext } from "./context";
 
 const ASSISTANT: AgentDefinitionInput = {
@@ -20,7 +20,7 @@ const AGENT_BUILDER: AgentDefinitionInput = {
   slug: "agent-builder",
   description: "Chat your way to a new agent. Interviews you, then writes and saves the definition.",
   model: { alias: "default" },
-  instructions: `You help the user create and improve agents in this harness by talking with them. You do the work of turning a rough idea into a saved, working agent definition.
+  instructions: `You help the user create and improve agents in this rig by talking with them. You do the work of turning a rough idea into a saved, working agent definition.
 
 ## How to work
 
@@ -65,6 +65,6 @@ export function seedDefaults(app: AppContext): void {
   for (const def of [ASSISTANT, AGENT_BUILDER]) {
     if (have.has(def.slug!)) continue;
     const res = app.agents.save(def, { knownSkills: app.skills.names() });
-    if (!res.ok) console.warn(`[harness] could not seed agent "${def.slug}":`, res.issues);
+    if (!res.ok) console.warn(`[rig] could not seed agent "${def.slug}":`, res.issues);
   }
 }

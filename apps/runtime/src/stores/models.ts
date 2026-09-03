@@ -1,4 +1,4 @@
-import { DEFAULT_CAPABILITIES, type Capabilities, type Dialect, type EntitlementStatus, type Model, type ModelAlias, type ModelParams, type Pricing } from "@harness/core";
+import { DEFAULT_CAPABILITIES, type Capabilities, type Dialect, type EntitlementStatus, type Model, type ModelAlias, type ModelParams, type Pricing } from "@rig/core";
 import { json, type Db } from "../db";
 
 interface Row {
