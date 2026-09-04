@@ -3,5 +3,5 @@ dist/
 *.log
 .env
 .env.*
-.harness/
+.rig/
 apps/web/dist/
