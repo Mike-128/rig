@@ -83,3 +83,7 @@ pnpm test
 ```
 
 The runtime test suite starts a mock upstream that speaks both dialects and walks the v1 definition of done end to end: probe, create, save, run with a tool call and an approval, restart, replay.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
