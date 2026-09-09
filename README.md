@@ -59,6 +59,23 @@ Attach skills to an agent in the Agent Builder; `load_skill` is added automatica
 
 ## CLI
 
+Check a restricted work laptop from an ordinary terminal (no administrator mode required):
+
+```bash
+pnpm rig doctor --offline
+pnpm rig doctor --workspace "C:\path\to\repository"
+pnpm rig doctor --json
+pnpm rig doctor --probe
+```
+
+On Windows, use `pnpm.cmd` if PowerShell blocks the `pnpm.ps1` launcher; this does not change execution policy. `doctor` checks Node, in-memory SQLite, temporary writes in the workspace and data directory, a harmless command in Rig's shell, and proxy/CA environment configuration. Temporary files are removed; a missing data directory is checked through its nearest existing parent without creating it. It does not install software, change certificates, request elevation, or open the credential store directly.
+
+By default it also reads the running daemon's health and model catalog at `RIG_URL` (default `http://127.0.0.1:7777`). Start `rig serve` first, or use `--offline` to skip all HTTP checks. A healthy endpoint confirms the runtime is reachable, not that every loopback port is usable. Environment checks describe the CLI process; a separately started runtime may have different settings.
+
+`--probe` explicitly makes a minimal provider request for the **default alias only**, through the runtime, and updates saved entitlement. It may incur provider usage. A passing probe includes provider validation responses, so it does not prove successful streaming or tool execution. Use Models for detailed probe failures. `--offline` and `--probe` cannot be combined.
+
+`--timeout <seconds>` bounds each shell/runtime check (default 5, range 1–120); the provider probe has a minimum client deadline of 35 seconds to allow the runtime's 30-second probe. Exit code 1 means a required check failed; 0 means none failed, even if warnings remain. `--json` emits a versioned report with `checks` and `exitCode`; reports omit paths, keys, proxy values, and raw provider errors. A missing shell is a warning because read-only agents remain usable. SQLite may emit Node's experimental-feature warning on stderr.
+
 ```bash
 pnpm rig models profiles
 pnpm rig connections add --name gemini --profile google-gemini --key-env GEMINI_API_KEY

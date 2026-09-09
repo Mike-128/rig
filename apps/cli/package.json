@@ -10,7 +10,7 @@
   "scripts": {
     "cli": "tsx src/index.ts",
     "typecheck": "tsc -p tsconfig.json",
-    "test": "echo \"no cli tests\""
+    "test": "vitest run"
   },
   "dependencies": {
     "@rig/core": "workspace:*",

@@ -11,7 +11,7 @@
     "dev:web": "pnpm --filter @rig/web dev",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -r test",
-    "rig": "pnpm --filter rig cli --",
+    "rig": "pnpm --filter rig cli",
     "build": "pnpm --filter @rig/web build",
     "start": "pnpm --filter @rig/web build && pnpm --filter @rig/runtime start"
   },
