@@ -78,13 +78,21 @@ Expected results include passes for Node, SQLite, writable folders, and shell ex
 
 ## 5. Start Rig and test runtime connectivity
 
-In the first terminal, from the repository root:
+Build the browser UI **before starting the runtime**. In the first terminal, from the repository root:
+
+```powershell
+pnpm.cmd build
+```
+
+Wait for the build to finish successfully and return to the PowerShell prompt. Then start Rig:
 
 ```powershell
 pnpm.cmd rig serve
 ```
 
 **Leave this terminal running.** Wait for Rig to report that it is listening. If startup fails, capture that error first.
+
+Open [Rig locally](http://127.0.0.1:7777). You should see the application with **Chat**, **Agents**, **Skills**, and **Models** navigation. Continue to step 6 to enter your key.
 
 Open a second PowerShell terminal and navigate to the same repository root. Restore its PATH and run the connected checks:
 
@@ -95,17 +103,42 @@ pnpm.cmd rig doctor
 
 By default, doctor checks the runtime at `http://127.0.0.1:7777`. It also reads the reported credential backend and checks whether the default model alias is configured. A new installation can legitimately report that no default model is configured yet. No provider request is made by this command.
 
-To use the browser UI, build it from the second terminal:
+### If the browser says “Rig runtime — The web UI has not been built yet”
+
+This is a status page, not the application. The API is working, but the runtime started without a built UI. In the second terminal, run:
 
 ```powershell
 pnpm.cmd build
 ```
 
-After the build, stop the runtime with **Ctrl+C** in its terminal and restart it with `pnpm.cmd rig serve`. Open [Rig locally](http://127.0.0.1:7777). The runtime serves the built UI; without a build, the root page explains that the UI needs building.
+After the build finishes, stop the runtime with **Ctrl+C** in its terminal and restart it with `pnpm.cmd rig serve`. Reload [Rig locally](http://127.0.0.1:7777). Restarting matters: the runtime checks for the built UI at startup; reloading the browser alone is insufficient.
 
-## 6. Test approved model access
+### If you already started Vite
 
-In the browser's **Models** page, configure your approved company gateway or provider connection and choose a default model. Adding and probing a connection makes provider requests. Do not assume access through GitHub Copilot supplies credentials for this standalone runtime.
+`pnpm.cmd dev:web` starts the development UI server. Its terminal displays a Local URL, normally [http://localhost:5173](http://localhost:5173). Open the URL Vite actually prints. Keep **both** the runtime and Vite terminals running: Vite serves the UI and forwards API requests to the runtime on port 7777. The two ports are different entry points to the same local runtime and stored connections.
+
+If that UI is working, you can enter your key there and continue. Vite is optional; for ordinary use, stop it with **Ctrl+C** and follow the build-and-serve steps above to use port 7777 alone.
+
+If Vite reports `EPERM: operation not permitted, rename` under `apps/web/node_modules/.vite`, a dependency-cache rename was denied. The message alone does not identify the cause. If the log subsequently reports successful dependency updates and the app works, continue. If it persists or the page fails, stop Vite and use the build-and-serve path above; retain the exact error if the build also fails. Administrator mode is not a required setup step.
+
+## 6. Enter your API key and choose a model
+
+Enter the key in the **Rig browser application**, not on the runtime status page, in chat, or in a source file. Use an approved gateway/provider API key; GitHub sign-in or Copilot access does not supply a key for this standalone runtime.
+
+1. Open **Models** in the navigation. The page heading is **Model Catalog**.
+2. Find **Add a connection**.
+3. Select the matching **Gateway profile**. The form initially selects Google Gemini; change it if your key is for Claude, GPT, or a company gateway. For direct Claude access use the Anthropic profile, for direct GPT access use the OpenAI profile, and for a company gateway use its appropriate profile/template.
+4. Give it a **Connection name**, such as `work-gateway`.
+5. Paste your key into **Key (stored in the OS keychain, never shown again)**. This is a masked password field.
+6. For a company gateway/template, enter the company-provided **Base URL override** and, if needed, **Auth header override**. For a direct provider using the matching profile, leave overrides blank unless instructed otherwise. Confirm the selected destination before submitting your key.
+7. Click **Add and probe**. This stores the connection and sends provider requests to discover/probe models, which may incur usage. The key field clears after the connection is saved.
+8. In the connection's model table, find the desired model with **entitled** status and click **set as default**. If it already has the **default** badge, no action is needed. Rig may have selected an initial default automatically.
+
+If no models appear, or the desired Claude/GPT model is missing, confirm the endpoint and supported model IDs/routes with your gateway administrator. A gateway may require a custom profile or **Add model manually**; do not guess routes from the key alone. One gateway key can cover both Claude and GPT if the gateway exposes both; separate direct providers need separate connections.
+
+The runtime stores credentials in the OS keychain when available and otherwise reports an encrypted-file fallback at startup and in doctor results. The connection card displays only the key's last four characters. You do not need to paste the key again at each startup; Vite and the built UI use the same storage when connected to the same runtime.
+
+## 7. Test approved model access
 
 Once a default model is configured, explicitly test it with:
 
