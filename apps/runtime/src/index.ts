@@ -24,10 +24,13 @@ code{background:#1f232c;padding:2px 6px;border-radius:4px;font-family:ui-monospa
 a{color:#5b9cff}.ok{color:#3ccf8e}h1{margin:0 0 8px}p{max-width:640px}</style>
 <h1>Rig runtime</h1>
 <p class="ok">The API is running. The web UI has not been built yet, which is why this page is not the app.</p>
-<p>Either build the UI once and reload this page:</p>
-<p><code>pnpm --filter @rig/web build</code></p>
+<p>In a second terminal at the repository root, build the UI:</p>
+<p><code>pnpm build</code> (Windows: <code>pnpm.cmd build</code>)</p>
+<p>Wait for the build to finish. Stop the runtime with Ctrl+C, start it again with <code>pnpm rig serve</code> (Windows: <code>pnpm.cmd rig serve</code>), then reload this page. The runtime checks for the UI at startup.</p>
 <p>Or run the Vite dev server with hot reload and use it instead:</p>
 <p><code>pnpm dev:web</code> then open <a href="http://localhost:5173">http://localhost:5173</a></p>
+<p>Keep both the runtime and Vite terminals running when using the development UI. On Windows use <code>pnpm.cmd dev:web</code>.</p>
+<p>Once the app opens, choose Models &rarr; Add a connection to select your gateway/provider profile and enter your API key in the Key field.</p>
 <p>API health: <a href="/api/health">/api/health</a></p>`,
     ),
   );
