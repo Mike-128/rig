@@ -17,6 +17,8 @@ examples/         example agent definitions
 
 ## Run it
 
+**Using a restricted Windows work laptop?** Follow the [Windows installation and testing guide](docs/windows-setup.md). It covers installation without administrator mode, missing `pnpm.cmd`, starting the runtime, and interpreting `rig doctor` results.
+
 Requires Node 22.13 or newer (SQLite is built in) and pnpm.
 
 ```bash
