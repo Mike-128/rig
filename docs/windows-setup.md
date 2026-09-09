@@ -131,12 +131,55 @@ Enter the key in the **Rig browser application**, not on the runtime status page
 4. Give it a **Connection name**, such as `work-gateway`.
 5. Paste your key into **Key (stored in the OS keychain, never shown again)**. This is a masked password field.
 6. For a company gateway/template, enter the company-provided **Base URL override** and, if needed, **Auth header override**. For a direct provider using the matching profile, leave overrides blank unless instructed otherwise. Confirm the selected destination before submitting your key.
-7. Click **Add and probe**. This stores the connection and sends provider requests to discover/probe models, which may incur usage. The key field clears after the connection is saved.
+7. For APIM, first review the custom-endpoint section below. Then click **Add and probe**. This stores the connection and sends provider requests to discover/probe models, which may incur usage. The key field clears after the connection is saved.
 8. In the connection's model table, find the desired model with **entitled** status and click **set as default**. If it already has the **default** badge, no action is needed. Rig may have selected an initial default automatically.
 
 If no models appear, or the desired Claude/GPT model is missing, confirm the endpoint and supported model IDs/routes with your gateway administrator. A gateway may require a custom profile or **Add model manually**; do not guess routes from the key alone. One gateway key can cover both Claude and GPT if the gateway exposes both; separate direct providers need separate connections.
 
 The runtime stores credentials in the OS keychain when available and otherwise reports an encrypted-file fallback at startup and in doctor results. The connection card displays only the key's last four characters. You do not need to paste the key again at each startup; Vite and the built UI use the same storage when connected to the same runtime.
+
+### APIM keys with a custom endpoint
+
+An APIM key goes in the same masked **Key** field. The key alone does not tell Rig which model routes or authentication settings your company uses.
+
+| Field | APIM configuration |
+| --- | --- |
+| Gateway profile | **Azure API Management gateway (template)**, or a company-specific profile if provided. |
+| Connection name | A recognizable local name such as `work-apim`. |
+| Key | Your APIM key, without adding a header name around it. |
+| Base URL override | The company-provided gateway base URL, including any shared path prefix. |
+| Auth header override | Leave blank only if your gateway uses the template default, `Ocp-Apim-Subscription-Key`. Otherwise enter the exact company-specified header name. |
+
+**The APIM template contains example model IDs, deployment paths, and an API version. They are not a discovery of your company's configuration.** Confirm these before relying on the probe results. The template can work as supplied only when those details match the gateway.
+
+Rig constructs the request URL by appending the model's **Route** to the connection's **Base URL**, then applying any model query parameters. For example, if the supplied request URL is:
+
+```text
+https://gateway.example.com/ai/openai/deployments/company-gpt/chat/completions?api-version=COMPANY_VERSION
+```
+
+one valid split is:
+
+```text
+Base URL: https://gateway.example.com/ai
+Route:    /openai/deployments/company-gpt/chat/completions
+Query:    api-version=COMPANY_VERSION
+```
+
+This is an illustration; use the values your company supplies. Do not paste the full completion URL into **Base URL override** while leaving the same completion path in the model route, or the path will be duplicated.
+
+Ask your gateway administrator for a sample request with credentials removed that identifies:
+
+- The full endpoint, including query parameters such as `api-version`.
+- The required authentication header and whether a prefix or additional authentication is required.
+- The deployment/model identifier and the value sent in the JSON `model` field, if any.
+- Whether each endpoint speaks Anthropic Messages or OpenAI Chat Completions.
+
+For a simple model route, the connection's **Add model manually** form provides **Model id**, **Dialect**, **Route**, and **Body model override**. The current form does not expose dedicated query-parameter or extra-authentication controls. A company-specific gateway profile or API configuration may therefore be needed, especially for API versions or additional headers. Authentication requiring token acquisition/refresh needs separate validation; the APIM template does not implement that flow.
+
+If you need help mapping a sample request, share the endpoint structure, header names, and example body with all keys/tokens removed. You may anonymize the hostname while preserving paths and query names. Never put a real key into the guide, a Git commit, or a screenshot shared for troubleshooting.
+
+After the actual model routes are configured, probe the intended model and set it as **default**, then continue below.
 
 ## 7. Test approved model access
 
