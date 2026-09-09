@@ -191,6 +191,65 @@ pnpm.cmd rig doctor --probe
 
 This probes only the default model through the runtime, may incur provider usage, and updates saved entitlement. A successful entitlement probe can include a provider validation response; it does **not** establish successful streaming or tool execution. Follow it with a short chat and a read-only file task in a test workspace.
 
+## 8. Stop and restart Rig
+
+Rig runs in the terminals you start it from. Closing the browser does not stop the runtime. After closing its terminal or rebooting, you must start the runtime again.
+
+### Restart the built application (port 7777)
+
+1. If the runtime is still running, go to its terminal and press **Ctrl+C**. Wait for the PowerShell prompt; if asked to terminate the batch job, answer **Y**. Avoid stopping a run that is still working: interrupted runs are marked failed on the next startup, not automatically resumed.
+2. In a normal PowerShell terminal, navigate to your Rig repository. Replace the example path below with your actual clone location:
+
+   ```powershell
+   cd "C:\path\to\rig"
+   $env:Path = "$env:LOCALAPPDATA\rig-tools;$env:Path"
+   pnpm.cmd rig serve
+   ```
+
+3. Leave the terminal running and wait for the listening message. Open or reload [http://127.0.0.1:7777](http://127.0.0.1:7777).
+
+If you prefer not to set PATH, use the full pnpm path from the repository folder:
+
+```powershell
+& "$env:LOCALAPPDATA\rig-tools\pnpm.cmd" rig serve
+```
+
+You do **not** need to reinstall dependencies or rebuild the UI for an ordinary restart. If the UI has never been built, follow step 5 first. Your saved connections, keys, agents, and conversation history remain available when you restart under the same Windows account and use the same `RIG_HOME`. Unfinished work does not resume automatically.
+
+If you used custom `RIG_HOME`, `RIG_PORT`, or other environment settings, restore them in the new terminal before starting Rig. Temporary environment settings, including the pnpm PATH line, do not persist across terminals. Use the matching browser port and `RIG_URL` for doctor if you changed the runtime port.
+
+### Restart the Vite development setup (port 5173)
+
+If you were using `pnpm.cmd dev:web`, restart both processes:
+
+1. Stop any existing Vite and runtime processes with **Ctrl+C** in their respective terminals. Wait for each terminal's prompt.
+2. In the first terminal, navigate to the repository, restore PATH as above, and run `pnpm.cmd rig serve`.
+3. In a second terminal, navigate to the same repository and run:
+
+   ```powershell
+   $env:Path = "$env:LOCALAPPDATA\rig-tools;$env:Path"
+   pnpm.cmd dev:web
+   ```
+
+4. Leave both terminals running. Open the **Local** URL printed by Vite, normally [http://localhost:5173](http://localhost:5173).
+
+Refreshing the browser alone does not restart either server. If startup reports that a port is already in use, check your existing terminals for a running Rig/Vite instance before starting another one.
+
+### Restart after pulling an update
+
+Stop the runtime and Vite first. For a clean checkout on `main`, run these from the repository root, proceeding only when each command succeeds:
+
+```powershell
+git pull --ff-only
+pnpm.cmd install --frozen-lockfile
+pnpm.cmd build
+pnpm.cmd rig serve
+```
+
+Restore the pnpm PATH line first if this is a new terminal. Rebuilding makes the built browser UI match the updated source. Then reload port 7777. To continue using Vite instead, start `pnpm.cmd dev:web` in the second terminal and open its Local URL.
+
+To check a restarted runtime, run `pnpm.cmd rig doctor` from another terminal with the same repository and environment settings.
+
 ## Common messages
 
 | Message | Meaning and next step |
