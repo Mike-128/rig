@@ -215,6 +215,10 @@ Direct-provider profiles may already define a listing endpoint. The generic APIM
 
 Click **Save discovery**, then **Scan inventory**. Discovery settings survive restarts. Existing model routes are retained, and **Use profile defaults** removes the connection's discovery override. Each listing configuration describes one dialect; for mixed gateways, configure other models manually or use separate connections for different listing endpoints.
 
+**Generic example (configuration only):** if an administrator supplies `https://gateway.example.com/api/deployments/access`, use `https://gateway.example.com` as the connection base URL and `/api/deployments/access` as **Model listing route**. Keep the subscription key and any required metadata headers on the connection. These are illustrative placeholders, not a configured or tested service.
+
+Before scanning, confirm that the endpoint accepts GET and inspect its documented response format. The current OpenAI-compatible listing adapter expects a provider-style list containing `data` entries with an `id`; a custom deployment-access response may need an additional adapter. Merely pointing the scanner at a URL does not convert its response format. In particular, verify whether the returned ID is the actual deployment ID needed in an inference route such as `/deployments/{model}/chat/completions?api-version=COMPANY_VERSION`. Use the API version specified for inference by your company; the listing endpoint alone does not determine it.
+
 If the gateway has no listing API, uses a different response format, or lists model names that cannot be mapped to deployment routes, obtain an inventory/profile from its administrator. Rig reports absent/failed discovery explicitly and can still probe configured models; it cannot promise an exhaustive list of everything the key permits. It does not guess and scan arbitrary endpoint paths.
 
 ## 7. Test approved model access
