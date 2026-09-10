@@ -50,6 +50,7 @@ export interface ProfileModelEntry {
 }
 
 export interface ListModelsSpec {
+  responseFormat?: "provider" | "azure-deployments";
   dialect: Dialect;
   route: string;
   /** Regex source; only listed ids matching are kept. */

@@ -17,6 +17,11 @@ const upstream = createServer(async (req, res) => {
   if (req.url?.startsWith("/inventory")) {
     res.end(JSON.stringify({ object: "list", data: ["allowed", "denied"].map((id) => ({ id, object: "model", created: 0, owned_by: "test" })) })); return;
   }
+  if (req.url === "/bad-deployments") { res.end(JSON.stringify({ unsupported: [] })); return; }
+  if (req.url === "/forbidden-list") { res.writeHead(403); res.end(JSON.stringify({ error: { message: "inventory denied" } })); return; }
+  if (req.url?.startsWith("/deployments")) {
+    res.end(JSON.stringify({ value: [{ id: "/resource/not-the-model-id", name: "azure-chat", properties: { model: { format: "OpenAI", name: "family" }, capabilities: { chatCompletion: "true" } } }] })); return;
+  }
   if (req.url?.includes("denied")) { res.writeHead(403); res.end(JSON.stringify({ error: { message: "not permitted" } })); return; }
   res.end(JSON.stringify({ id: "test", object: "chat.completion", choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: "ok" } }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }));
 });
@@ -77,6 +82,21 @@ describe("connection headers and inventory", () => {
     expect(await rt.app.secrets.get(conn.id)).toBe("test-secret");
     await api(`/connections/${conn.id}/headers`, "PATCH", { "x-company-charge-code": "charge-123" });
   });
+  it("normalizes deployment inventory through the authenticated proxy and preserves saved models", async () => {
+    const spec = { dialect: "openai.chat", responseFormat: "azure-deployments", route: "/deployments", defaultRoute: "/invoke/{model}?api-version=test-version", defaultParams: { maxTokensField: "max_completion_tokens" } };
+    expect((await api(`/connections/${conn.id}/discovery`, "PUT", spec)).status).toBe(200);
+    const response = await api(`/connections/${conn.id}/probe?includeListed=true`, "POST");
+    const result = await response.json() as { models: Model[]; listed: number; listError?: string };
+    expect(result.listError).toBeUndefined();
+    expect(result.listed).toBe(1);
+    expect(result.models.find((m) => m.providerModelId === "azure-chat")).toMatchObject({ route: "/invoke/azure-chat?api-version=test-version", status: "entitled" });
+    expect(result.models.find((m) => m.providerModelId === "manual")?.route).toBe("/invoke/allowed");
+    expect(seen.find((r) => r.url === "/deployments")?.headers["ocp-apim-subscription-key"]).toBe("test-secret");
+    expect(rt.app.connections.discovery(conn.id)?.responseFormat).toBe("azure-deployments");
+    expect(result.models.find((m) => m.providerModelId === "azure-chat")?.params?.maxTokensField).toBe("max_completion_tokens");
+    const repeated = await (await api(`/connections/${conn.id}/probe?includeListed=true`, "POST")).json() as { listed: number };
+    expect(repeated.listed).toBe(0);
+  });
   it("rejects malformed headers and authentication overrides without changing saved headers", async () => {
     for (const headers of [{ Host: "other" }, { "bad name": "value" }, { "x-code": "bad\r\nvalue" }, { "X-Code": "a", "x-code": "b" }, { "Ocp-Apim-Subscription-Key": "replace" }]) {
       expect((await api(`/connections/${conn.id}/headers`, "PATCH", headers)).status).toBe(400);
@@ -84,6 +104,14 @@ describe("connection headers and inventory", () => {
     expect(rt.app.connections.get(conn.id)?.extraHeaders).toEqual({ "x-company-charge-code": "charge-123" });
     expect((await api(`/connections/${conn.id}/discovery`, "PUT", { dialect: "openai.chat", route: "https://other", defaultRoute: "/call" })).status).toBe(400);
     expect((await api("/connections/missing/headers", "PATCH", {})).status).toBe(404);
+  });
+  it("reports invalid deployment responses and upstream permission errors", async () => {
+    for (const [route, message] of [["/bad-deployments", "Expected a deployment array"], ["/forbidden-list", "inventory denied"]]) {
+      await api(`/connections/${conn.id}/discovery`, "PUT", { dialect: "openai.chat", responseFormat: "azure-deployments", route, defaultRoute: "/invoke/{model}" });
+      const result = await (await api(`/connections/${conn.id}/probe`, "POST")).json() as { listed: number; listError: string };
+      expect(result.listed).toBe(0);
+      expect(result.listError).toContain(message);
+    }
   });
   it("reports absent discovery honestly and keeps 400 validation errors classified as entitled", async () => {
     await api(`/connections/${conn.id}/discovery`, "PUT", null);

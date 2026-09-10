@@ -14,7 +14,9 @@ export const ExtraHeaders = z.record(z.string(), z.string()).superRefine((header
 }).transform((headers) => Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])));
 
 export const DiscoverySpec = z.object({
+  responseFormat: z.enum(["provider", "azure-deployments"]).default("provider"),
+  defaultParams: z.object({ maxTokensField: z.enum(["max_tokens", "max_completion_tokens"]), streamUsage: z.boolean().optional() }).optional(),
   dialect: z.enum(["openai.chat", "anthropic.messages"]),
   route: z.string().trim().min(1).startsWith("/"),
   defaultRoute: z.string().trim().min(1).startsWith("/"),
-}).strict();
+}).strict().refine((spec) => spec.responseFormat !== "azure-deployments" || spec.dialect === "openai.chat", { message: "Azure deployment listing requires OpenAI-compatible inference." });
