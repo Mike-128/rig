@@ -4,6 +4,8 @@ Use a normal PowerShell terminal, including the terminal in VS Code. These steps
 
 Run commands one step at a time. If a step fails, save its error before continuing.
 
+Already installed? See [the fresh-start sequence](#fresh-start-sequence-after-closing-terminals-or-rebooting). For `unable to get local issuer certificate`, see [Windows certificate trust](#windows-certificate-trust).
+
 ## 1. Check prerequisites
 
 ```powershell
@@ -35,11 +37,13 @@ The expected version is `11.25.0`.
 
 **Repeat the PATH line in every new terminal**, including the second terminal used later. This setting lasts only for the current terminal; closing it does not uninstall pnpm. Using `pnpm.cmd` avoids invoking the PowerShell `.ps1` launcher.
 
-Alternatively, call pnpm by its full path whenever you need it:
+You can check whether pnpm is installed by calling its full path:
 
 ```powershell
 & "$env:LOCALAPPDATA\rig-tools\pnpm.cmd" --version
 ```
+
+This full-path check does **not** replace setting PATH for Rig's scripts. The root `rig` script calls `pnpm` internally, so even a full-path invocation of `rig serve` can fail with “pnpm is not recognized as an internal or external command” unless the PATH line above has been run in the same terminal.
 
 ## 3. Get the repository and install dependencies
 
@@ -195,6 +199,62 @@ This probes only the default model through the runtime, may incur provider usage
 
 Rig runs in the terminals you start it from. Closing the browser does not stop the runtime. After closing its terminal or rebooting, you must start the runtime again.
 
+### Fresh-start sequence after closing terminals or rebooting
+
+This sequence resolved startup on the work laptop after configuring Windows certificate trust. Stop old Rig and Vite processes with **Ctrl+C** in their respective terminals first. Answer **Y** if asked to terminate the batch job, and wait for the prompt before closing each terminal. Use ordinary PowerShell; administrator mode is not required.
+
+Open a new **runtime terminal**. Run each command separately, pressing **Enter after each**. Replace the example repository path with your clone's actual location, including its final `rig` folder:
+
+```powershell
+cd "C:\path\to\rig"
+```
+
+```powershell
+$env:Path = "$env:LOCALAPPDATA\rig-tools;$env:Path"
+```
+
+For Node versions supporting system CA trust (including the tested Node 25.4), when the company certificate fix below is needed:
+
+```powershell
+$env:NODE_USE_SYSTEM_CA = "1"
+```
+
+```powershell
+pnpm.cmd rig serve
+```
+
+Wait for **runtime listening** and leave this terminal running. Do not enter the Vite command into this occupied terminal.
+
+If using the built UI, open [http://127.0.0.1:7777](http://127.0.0.1:7777). If using Vite instead, open a **second terminal**, navigate to the same repository, restore PATH, and start the UI:
+
+```powershell
+cd "C:\path\to\rig"
+$env:Path = "$env:LOCALAPPDATA\rig-tools;$env:Path"
+pnpm.cmd dev:web
+```
+
+Run those lines separately too. Leave both terminals running and open the Local URL Vite prints, normally [http://localhost:5173](http://localhost:5173). In **Models**, probe the manually configured model with the actual company route, rather than relying on the template's example rows.
+
+### Windows certificate trust
+
+`unable to get local issuer certificate` means Node could not build a trusted certificate chain. It does not establish that the API key is invalid. On the tested work laptop, enabling Windows system CA trust changed the unauthenticated root request from a certificate error to **HTTP 404**. That confirmed TLS worked for that request, not model entitlement.
+
+Node supports `NODE_USE_SYSTEM_CA=1` from v22.19.0 and v24.6.0 onward in those release lines, including v25.4.0. Rig's minimum Node 22.13 alone does not guarantee this setting is supported. This uses existing system trust without disabling certificate verification. See [Node's documentation](https://nodejs.org/download/release/v25.9.0/docs/api/cli.html#node_use_system_ca1).
+
+In a spare terminal, set the environment variable and test your approved gateway root. Replace the example hostname; this request sends **no API key**:
+
+```powershell
+$env:NODE_USE_SYSTEM_CA = "1"
+```
+
+```powershell
+node -e "fetch('https://gateway.example.com', {signal: AbortSignal.timeout(10000)}).then(r => console.log('HTTP status:', r.status)).catch(e => { console.log(e.message); console.log(e.cause); })"
+```
+
+An HTTP response such as 404 means this request completed TLS but the root resource was not found; a model request uses a different path. If the certificate error remains, obtain the approved CA chain from your company's administrator and confirm whether `NODE_EXTRA_CA_CERTS` is needed. Do not disable TLS verification.
+
+**Apply the setting to the runtime terminal as well.** Setting it in a spare terminal or Vite terminal does not affect an already-running Rig process. Stop Rig, set the variable in its terminal, then start `pnpm.cmd rig serve` again. Repeat the setting in new runtime terminals; it is not permanently saved by these commands. Live model access remains a separate probe/chat check.
+
 ### Restart the built application (port 7777)
 
 1. If the runtime is still running, go to its terminal and press **Ctrl+C**. Wait for the PowerShell prompt; if asked to terminate the batch job, answer **Y**. Avoid stopping a run that is still working: interrupted runs are marked failed on the next startup, not automatically resumed.
@@ -208,11 +268,7 @@ Rig runs in the terminals you start it from. Closing the browser does not stop t
 
 3. Leave the terminal running and wait for the listening message. Open or reload [http://127.0.0.1:7777](http://127.0.0.1:7777).
 
-If you prefer not to set PATH, use the full pnpm path from the repository folder:
-
-```powershell
-& "$env:LOCALAPPDATA\rig-tools\pnpm.cmd" rig serve
-```
+Keep the pnpm directory on PATH even if using a full-path launcher: Rig's scripts invoke pnpm internally. If Windows system CA trust was required, set `$env:NODE_USE_SYSTEM_CA = "1"` before starting the runtime, as shown above.
 
 You do **not** need to reinstall dependencies or rebuild the UI for an ordinary restart. If the UI has never been built, follow step 5 first. Your saved connections, keys, agents, and conversation history remain available when you restart under the same Windows account and use the same `RIG_HOME`. Unfinished work does not resume automatically.
 
@@ -254,7 +310,12 @@ To check a restarted runtime, run `pnpm.cmd rig doctor` from another terminal wi
 
 | Message | Meaning and next step |
 | --- | --- |
-| `pnpm.cmd` is not recognized | Restore the PATH line from step 2 in this terminal, or use the full path shown below. |
+| `pnpm.cmd` is not recognized | Restore the PATH line from step 2 in this terminal. |
+| `pnpm` is not recognized as an internal or external command | A nested script could not find pnpm. Restore PATH even if you launched the outer command using its full path. |
+| `Unexpected token '&'` | Commands may have been combined on one line. Run the environment assignment and launcher as separate commands. |
+| `Unexpected token 'rig'` after a quoted executable path | A quoted path alone is a string in PowerShell. Use `pnpm.cmd rig serve` after setting PATH, or prefix a quoted executable path with `&`. |
+| `listen EADDRINUSE` | Another process owns the port. Stop the old Rig terminal with Ctrl+C before restarting. Do not stop unrelated Node processes. |
+| `unable to get local issuer certificate` | Follow the Windows certificate trust section, then restart Rig from the terminal containing the trust setting. |
 | `1 package is looking for funding` | Informational npm output; no action required. |
 | A newer pnpm version is available | Continue with the repository's pinned version. |
 | SQLite `ExperimentalWarning` | Node emitted a feature warning. If doctor's SQLite check passes, this warning did not block it. |
@@ -263,10 +324,11 @@ To check a restarted runtime, run `pnpm.cmd rig doctor` from another terminal wi
 | `FAIL runtime` | Doctor could not reach a valid Rig health endpoint. Start `rig serve` and inspect startup output; if already running, check the configured URL, port, and local policy. |
 | `ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL` / `ELIFECYCLE` after doctor | pnpm is reporting doctor's nonzero exit status. Read the preceding `FAIL` line for the underlying diagnostic. |
 
-If pnpm disappeared from a new terminal, this command starts Rig without changing PATH (run it from the repository root):
+If pnpm disappeared from a new terminal, restore PATH and start Rig (run each line separately from the repository root, and restore any required certificate setting first):
 
 ```powershell
-& "$env:LOCALAPPDATA\rig-tools\pnpm.cmd" rig serve
+$env:Path = "$env:LOCALAPPDATA\rig-tools;$env:Path"
+pnpm.cmd rig serve
 ```
 
 If the full path is also missing, check the installation location:
@@ -276,6 +338,15 @@ Test-Path "$env:LOCALAPPDATA\rig-tools\pnpm.cmd"
 ```
 
 A `False` result means the launcher is absent from that location; revisit step 2 and any installation error.
+
+If `EADDRINUSE` persists and you cannot find the old terminal, identify the listener with this read-only command (use your actual runtime port if different):
+
+```powershell
+Get-NetTCPConnection -LocalPort 7777 -State Listen |
+  Select-Object LocalAddress, LocalPort, OwningProcess
+```
+
+Identify the owning process before deciding how to stop it. Closing a browser tab or restarting Vite does not release the runtime's port.
 
 ## Sharing results and optional developer tests
 
