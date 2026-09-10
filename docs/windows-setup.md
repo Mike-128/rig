@@ -179,7 +179,15 @@ Ask your gateway administrator for a sample request with credentials removed tha
 - The deployment/model identifier and the value sent in the JSON `model` field, if any.
 - Whether each endpoint speaks Anthropic Messages or OpenAI Chat Completions.
 
-For a simple model route, the connection's **Add model manually** form provides **Model id**, **Dialect**, **Route**, and **Body model override**. The current form does not expose dedicated query-parameter or extra-authentication controls. A company-specific gateway profile or API configuration may therefore be needed, especially for API versions or additional headers. Authentication requiring token acquisition/refresh needs separate validation; the APIM template does not implement that flow.
+For a simple model route, the connection's **Add model manually** form provides **Model id**, **Dialect**, **Route**, **Body model override**, and **Query parameters**. For an API version, enter a JSON object such as `{"api-version":"2024-12-01-preview"}`, using the version supplied by your company. These parameters override matching values included in Route. Extra authentication headers still require a company-specific gateway profile or API configuration. Authentication requiring token acquisition/refresh needs separate validation; the APIM template does not implement that flow.
+
+### Correcting a manually added model
+
+In the saved connection's model table, click **Edit** beside a manually added model. The form opens above the table with its saved values. Correct the **Route**, **Query parameters**, **Body model override**, **Dialect**, **Display name**, or token/reasoning settings, then click **Save changes**. **Cancel** leaves the saved configuration unchanged.
+
+The saved model ID remains fixed to preserve agent and alias references. To change the upstream deployment, edit its path in **Route**; to change the request body's model value, use **Body model override**. Leave that override blank to use the saved ID. Use `{}` to clear separate query parameters (also remove any unwanted query from Route).
+
+Saving keeps the connection/key, pricing, and aliases, resets the model to **unprobed**, and clears the previous error. Click **probe** on that row to test the corrected settings. Saving itself does not send a provider request. **Edit** is available for manually added models only.
 
 If you need help mapping a sample request, share the endpoint structure, header names, and example body with all keys/tokens removed. You may anonymize the hostname while preserving paths and query names. Never put a real key into the guide, a Git commit, or a screenshot shared for troubleshooting.
 

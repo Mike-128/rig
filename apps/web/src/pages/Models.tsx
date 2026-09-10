@@ -3,6 +3,7 @@ import type { Connection, GatewayProfile, Model, ModelAlias } from "@rig/core/ty
 import { api } from "../api";
 
 type ModelRow = Model & { connectionName: string };
+const emptyManual = { id: "", displayName: "", dialect: "openai.chat", route: "", bodyModel: "", maxTokensField: "max_tokens", reasoning: false, query: "{}" };
 
 export function ModelsPage() {
   const [profiles, setProfiles] = useState<GatewayProfile[]>([]);
@@ -20,7 +21,20 @@ export function ModelsPage() {
   const [headerName, setHeaderName] = useState("");
 
   const [manualFor, setManualFor] = useState<string | null>(null);
-  const [manual, setManual] = useState({ id: "", dialect: "openai.chat", route: "", bodyModel: "", maxTokensField: "max_tokens", reasoning: false });
+  const [manual, setManual] = useState(emptyManual);
+  const [editing, setEditing] = useState<ModelRow | null>(null);
+  const [savingManual, setSavingManual] = useState(false);
+
+  function editManual(model: ModelRow) {
+    setError(null);
+    setNotice(null);
+    setEditing(model);
+    setManualFor(model.connectionId);
+    setManual({ id: model.providerModelId, displayName: model.displayName, dialect: model.dialect, route: model.route,
+      bodyModel: model.bodyModel === model.providerModelId ? "" : model.bodyModel,
+      maxTokensField: model.params?.maxTokensField ?? "max_tokens", reasoning: model.capabilities.reasoning,
+      query: JSON.stringify(model.query ?? {}, null, 2) });
+  }
 
   const refresh = async () => {
     const [p, c, m, a] = await Promise.all([
@@ -106,16 +120,29 @@ export function ModelsPage() {
   async function addManual() {
     if (!manualFor) return;
     setError(null);
+    setSavingManual(true);
     try {
-      await api(`/connections/${manualFor}/models`, {
-        method: "POST",
-        json: { ...manual, bodyModel: manual.bodyModel || undefined },
+      let query: unknown;
+      try { query = JSON.parse(manual.query || "{}"); } catch { throw new Error("Query parameters must be a JSON object, for example {\"api-version\":\"2024-12-01-preview\"}."); }
+      if (!query || typeof query !== "object" || Array.isArray(query) || Object.values(query).some((v) => typeof v !== "string")) {
+        throw new Error("Query parameters must be an object with string values.");
+      }
+      const { id, ...fields } = manual;
+      await api(editing ? `/models/${encodeURIComponent(manualFor)}/${encodeURIComponent(editing.providerModelId)}` : `/connections/${manualFor}/models`, {
+        method: editing ? "PATCH" : "POST",
+        json: { ...fields, ...(editing ? {} : { id }), query,
+          displayName: manual.displayName || (editing ? "" : undefined),
+          bodyModel: manual.bodyModel || (editing ? "" : undefined) },
       });
       setManualFor(null);
-      setManual({ id: "", dialect: "openai.chat", route: "", bodyModel: "", maxTokensField: "max_tokens", reasoning: false });
+      setManual(emptyManual);
+      setEditing(null);
+      setNotice(editing ? "Model saved. Probe it again to check the updated configuration." : "Model added. Probe it to check access.");
       await refresh();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setSavingManual(false);
     }
   }
 
@@ -183,7 +210,7 @@ export function ModelsPage() {
                   <button onClick={() => probe(c.id)} disabled={busy === c.id}>
                     {busy === c.id ? "Probing…" : "List and probe"}
                   </button>
-                  <button onClick={() => setManualFor(manualFor === c.id ? null : c.id)}>Add model manually</button>
+                  <button disabled={savingManual} onClick={() => { setEditing(null); setManual(emptyManual); setManualFor(manualFor === c.id && !editing ? null : c.id); }}>Add model manually</button>
                   <button className="danger" onClick={() => removeConnection(c.id)}>
                     Remove
                   </button>
@@ -191,10 +218,16 @@ export function ModelsPage() {
               </div>
               {manualFor === c.id && (
                 <div className="card" style={{ marginTop: 10 }}>
+                  <h3>{editing ? "Edit manual model" : "Add manual model"}</h3>
                   <div className="grid2">
                     <label className="field">
                       <span>Model id (sent in the body unless overridden)</span>
-                      <input value={manual.id} onChange={(e) => setManual({ ...manual, id: e.target.value })} />
+                      <input disabled={!!editing || savingManual} value={manual.id} onChange={(e) => setManual({ ...manual, id: e.target.value })} />
+                      {editing && <span className="muted">The saved ID stays fixed so agents and aliases keep working. Change the deployment in Route or the request model in Body model override.</span>}
+                    </label>
+                    <label className="field">
+                      <span>Display name (optional)</span>
+                      <input value={manual.displayName} onChange={(e) => setManual({ ...manual, displayName: e.target.value })} />
                     </label>
                     <label className="field">
                       <span>Dialect</span>
@@ -222,9 +255,15 @@ export function ModelsPage() {
                       <input type="checkbox" checked={manual.reasoning} onChange={(e) => setManual({ ...manual, reasoning: e.target.checked })} /> supports reasoning effort
                     </label>
                   </div>
-                  <button className="primary" onClick={addManual} disabled={!manual.id || !manual.route}>
-                    Add model
+                  <label className="field">
+                    <span>Query parameters (JSON string values)</span>
+                    <textarea value={manual.query} onChange={(e) => setManual({ ...manual, query: e.target.value })} placeholder={'{"api-version":"2024-12-01-preview"}'} />
+                    <span className="muted">Use {"{}"} for none. These values override matching query parameters in Route.</span>
+                  </label>
+                  <button className="primary" onClick={addManual} disabled={!manual.id.trim() || !manual.route.trim() || savingManual}>
+                    {savingManual ? "Saving…" : editing ? "Save changes" : "Add model"}
                   </button>
+                  <button disabled={savingManual} onClick={() => { setManualFor(null); setEditing(null); setManual(emptyManual); }}>Cancel</button>
                 </div>
               )}
               <table style={{ marginTop: 10 }}>
@@ -280,6 +319,7 @@ export function ModelsPage() {
                           )}
                         </td>
                         <td>
+                          {m.origin === "manual" && <button disabled={savingManual || busy !== null} onClick={() => editManual(m)}>Edit</button>}{" "}
                           <button onClick={() => probeOne(m)} disabled={busy === m.id}>
                             {busy === m.id ? "…" : "probe"}
                           </button>{" "}
