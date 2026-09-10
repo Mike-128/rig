@@ -9,7 +9,7 @@ Further reading: `README.md` for user-facing setup, `DESIGN.md` for the full des
 
 ## Current adoption context
 
-Read the progress and private-setup boundary in AGENTS.md section 9 before working on gateway compatibility. This checkout includes doctor diagnostics, Windows setup/restart guidance, connection-wide metadata headers, and configurable discovery. The manual-model editor tested by the user is from another revision; check branch history before assuming it exists here.
+Read the progress and private-setup boundary in AGENTS.md section 9 before working on gateway compatibility. This checkout includes doctor diagnostics, Windows setup/restart guidance, connection-wide metadata headers, configurable discovery, and the manual-model editor with query parameters. Preserve model identity and aliases when editing request settings.
 
 The user's manually configured model now works, but inventory scanning remains unresolved. Direct PowerShell listing worked. Provider model lists and Azure deployment inventories have different shapes: a resource `id`, deployment `name`, and model-family name are not interchangeable. Do not claim arbitrary inventory responses are supported just because a listing route can be configured. Pressure-test with synthetic fixtures and keep failures visible.
 
