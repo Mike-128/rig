@@ -1,5 +1,9 @@
 # Rig
 
+<p align="center">
+  <img src="docs/assets/rig-logo.png" alt="Rig mascot: a smiling rigatoni pasta wearing a tactical chest harness" width="320" />
+</p>
+
 Rig is a provider-agnostic agent harness. Register model keys (direct provider, gateway virtual key, or local server), see which models a key is entitled to, then design, save, and run agents against any of them. Design notes are in [DESIGN.md](DESIGN.md); orientation for coding agents is in [AGENTS.md](AGENTS.md).
 
 This is the v1 slice: local runtime, loopback proxy, native engine, two dialects (Anthropic Messages and OpenAI Chat Completions), skills, a conversational agent builder, a web UI with Chat / Agents / Skills / Models, and a CLI.
