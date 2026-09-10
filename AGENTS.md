@@ -44,7 +44,13 @@ apps/web/               React UI (Chat, Agents, Skills, Models), SSE-driven
 apps/cli/               `rig` CLI
 ```
 
-Roughly 6,200 lines total: core 2,272 · runtime 1,990 · web 1,588 · cli 381.
+Additional entry points for setup and gateway compatibility:
+
+- `apps/cli/src/doctor.ts` and `apps/cli/test/doctor.test.ts`: bounded local/runtime diagnostics.
+- `apps/runtime/src/connection-settings.ts`: connection-header and discovery validation.
+- `apps/runtime/src/routes/catalog.ts`, `catalog.ts`, and `stores/connections.ts`: connection settings, discovery, and probes.
+- `apps/web/src/ConnectionSettings.tsx` and `pages/Models.tsx`: header table, discovery settings, and model configuration.
+- `docs/windows-setup.md`: installation, credentials, certificates, updates, and restart troubleshooting on restricted Windows machines.
 
 **Reading order if you are new:** `packages/core/src/types/canonical.ts` → `packages/core/src/engine/native.ts` → `apps/runtime/src/scheduler.ts` → `apps/runtime/src/proxy.ts`. That is the whole spine.
 
@@ -104,16 +110,27 @@ Requires Node 22.13+ (uses the built-in `node:sqlite`) and pnpm.
 ```bash
 pnpm install
 pnpm typecheck          # all four packages
-pnpm test               # 51 tests: 33 core + 18 runtime
+pnpm test               # mock-provider and CLI diagnostics tests; use output for current counts
 pnpm build              # builds the web UI into apps/web/dist
 pnpm dev:runtime        # runtime on :7777 (tsx watch)
 pnpm dev:web            # Vite on :5173, proxies /api to :7777
-pnpm rig -- <args>      # CLI, e.g. pnpm rig -- agent list
+pnpm rig <args>         # CLI, e.g. pnpm rig agent list
+pnpm rig doctor --offline # local checks without a running runtime
+pnpm rig doctor        # includes runtime checks, no provider request by default
+pnpm rig doctor --probe # explicitly probes the default model; may incur usage
 ```
 
 The runtime serves the built UI at `/` when `apps/web/dist` exists; otherwise `/` returns a page explaining how to build it. For a one-shot production-ish run: `pnpm start`.
 
 **Do not use a Bash tool to run the dev server** if your harness offers a managed preview mechanism; prefer that.
+
+On restricted Windows machines, follow `docs/windows-setup.md`. Use normal PowerShell and the repository-pinned pnpm version, installed with a user-local prefix when needed. Restore `$env:LOCALAPPDATA\rig-tools` on PATH in each terminal: even a full-path launcher needs PATH because nested scripts invoke pnpm. Use `pnpm.cmd` and run environment assignments and commands on separate lines.
+
+Build the UI before `pnpm.cmd rig serve`; restart the runtime after its first UI build because static serving is selected at startup. The built application uses port 7777. Vite on 5173 is optional and requires a separate terminal plus the running runtime. Stop old instances with Ctrl+C before restarting; do not kill unrelated Node processes for an `EADDRINUSE` error. Restore the same account and `RIG_HOME` to retain state. Interrupted runs are not automatically resumed.
+
+For corporate certificate trust, apply approved CA settings in the **runtime's** terminal before starting it. Setting them in Vite or a diagnostic terminal does not update an existing runtime. `NODE_USE_SYSTEM_CA=1` worked on the tested Node 25.4 installation; Rig's minimum Node version alone does not guarantee support. Never disable TLS verification. A keyless root HTTP 404 establishes an HTTP response, not model access.
+
+Doctor supports structured JSON reports and bounded checks. Keep reports free of secrets and raw provider errors. Warnings identify optional or unverified capabilities; a required failure produces exit code 1. Default diagnostics do not establish successful streaming or tool use.
 
 ### Testing approach
 
@@ -137,6 +154,16 @@ When you fix a provider-compatibility bug, encode it in the mock so it becomes a
 Keys live in the **OS keychain** under service `rig` (legacy service `harness` is read once and copied forward). If the keychain is unavailable, the runtime falls back to AES-256-GCM files under `~/.rig/secrets` and says so at startup. Keys are never in the database, never in the repo, never sent to the UI — the UI sees only the last 4 characters.
 
 Env: `RIG_HOME`, `RIG_PORT` (default 7777), `RIG_MAX_RUNS` (default 4), `RIG_URL` (clients).
+
+Connection metadata headers are stored in SQLite `extra_headers`; these values are visible in settings and are **not secret storage**. Discovery overrides persist separately in `connection_discovery`. Keep primary credentials in the existing secret backend. Removing a discovery override restores profile defaults.
+
+### Connection headers and discovery
+
+The Models UI supports adding and editing connection-wide metadata headers. The proxy injects them into listing, probes, and inference, including streaming. Header validation rejects authentication/transport overrides, case-insensitive duplicates, invalid names, and line breaks. Configured headers cannot be overridden by SDK request headers. Saving headers resets stale probe statuses while preserving keys and aliases.
+
+Discovery overrides describe a listing dialect, GET route, and inference route template for new models. The listing dialect selects a parser; it does **not** assign one inference dialect to every model on a connection. Inference dialect and route still belong to each Model. `{model}` substitution URL-encodes the listed identifier; existing model configurations are preserved. Listing has a 30-second timeout. Scan inventory lists and probes models and can incur usage; it is not an offline command.
+
+Current listing uses the official provider SDKs. An OpenAI-style `data` list with `id` entries is supported; pointing it at an arbitrary deployment inventory does not translate that response. Keep missing/failed discovery visible and do not promise exhaustive entitlement discovery. `apps/runtime/test/connection-settings.test.ts` covers headers, persistence, discovery, and proxy pagination with a synthetic upstream.
 
 ---
 
@@ -183,8 +210,21 @@ These cost real debugging time. They are not documented anywhere obvious.
 
 ## 9. Known gaps and open work
 
+### Adoption progress and follow-up (2026-09-09)
+
+- Implemented in this checkout: doctor diagnostics, restricted-Windows setup/restart guidance, connection-header editing, and configurable inventory scans. Use actual test output rather than historical fixed counts. Mock tests do not establish access to a real corporate gateway.
+- The user confirmed a manually configured deployment works after correcting its route, deployment identifier, required metadata header, API-version query, and token parameter. Treat this as a verified individual configuration, not proof all template models or discovery work.
+- The manual-model editor is implemented and merged. It supports query parameters and model request settings; see `apps/runtime/test/model-edit.test.ts` for regression coverage. Preserve stored model identity and aliases when editing; route and body model may differ from the saved identifier.
+- **Inventory scanning remains unresolved.** Direct PowerShell listing succeeded while the UI scan did not. The supplied partial inventory contained Azure deployment records: `name` is a deployment identifier, `id` is a resource path, and `properties.model.name` is a model-family name. These are not interchangeable. The outer response wrapper and pagination were not established; do not invent them or claim a parser fix has been validated.
+- Pressure-test discovery using synthetic records: provider lists versus deployment metadata, unsupported wrappers, empty/malformed results, pagination, timeout/TLS/auth failures, required headers, route/query preservation, and visible progress/error counts. Compare against the known-working direct listing on the user's machine. Finish with a real short chat when authorized; listing and a validation-only 400 probe are not successful inference.
+- Entitlement/access inventories may omit deployment routing metadata. Require a documented mapping instead of guessing routes or deriving API versions from model release dates.
+
+### Public repository and private setup boundary
+
+Keep employer-specific service names, hosts, header names/values, deployment IDs, raw inventories, and account metadata out of public documentation, code, fixtures, commits, and PRs. Use generic examples and synthetic responses. The user's private setup reference is stored outside the repository in their local Documents folder; consult it when explicitly requested for that environment and never copy it into Git. It records working setup and diagnostic commands without the API key or charge-code value. Do not assume another machine has the same path or credentials.
+
 - **Cost shows `$0.0000` for discovered models.** Models found by listing carry no pricing, and the bundled Gemini catalog predates the 3.5–3.8 models. The clean fix is a per-model pricing editor in the Models page, not chasing provider catalogs in a static file.
-- **Repo folder is still `C:\Users\Michael\Harness`** on the author's machine while the project is Rig. Cosmetic.
+- **Checkout locations vary.** Use the current workspace rather than assuming an older local folder name.
 - **`@rig` npm scope is unverified.** Irrelevant while every package is `private: true`.
 - **Designed but not built** (all specified in `DESIGN.md`): sub-agents and the run tree (§6.8), parallel scheduling beyond the simple queue (§6.9), handoffs and declarative workflows (§6.10), the Workbench entry point and chat→agent task escalation (§8), MCP tool sources, the enterprise control plane with kill switch and telemetry (§7), and the Claude Agent SDK / OpenAI Agents SDK engines (§6.4).
 
