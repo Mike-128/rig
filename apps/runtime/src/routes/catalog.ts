@@ -93,7 +93,8 @@ export function catalogRoutes(app: AppContext): Hono {
     const parsed = DiscoverySpec.nullable().safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: "Invalid discovery configuration", issues: parsed.error.issues }, 400);
     const current = app.connections.discovery(conn.id) ?? app.profiles.get(conn.profileId)?.listModels;
-    app.connections.setDiscovery(conn.id, parsed.data ? { ...(current?.dialect === parsed.data.dialect ? current : {}), ...parsed.data } : null);
+    const previous = current?.dialect === parsed.data?.dialect ? current : undefined;
+    app.connections.setDiscovery(conn.id, parsed.data ? { ...previous, ...parsed.data, defaultParams: parsed.data.defaultParams ? { ...previous?.defaultParams, ...parsed.data.defaultParams } : previous?.defaultParams } : null);
     return c.json({ ok: true });
   });
 
@@ -103,10 +104,10 @@ export function catalogRoutes(app: AppContext): Hono {
     if (!conn) return c.json({ error: "not found" }, 404);
     const profile = app.profiles.get(conn.profileId);
     const includeListed = c.req.query("includeListed") === "true";
-    const listing = profile ? await discoverListed(app, conn, profile) : { added: [], error: "No gateway profile available for discovery" };
+    const listing = profile ? await discoverListed(app, conn, profile) : { added: [], found: undefined, error: "No gateway profile available for discovery" };
     const models = await probeConnection(app, conn, { includeListed });
     const boundDefault = ensureDefaultAlias(app);
-    return c.json({ models, listed: listing.added.length, listError: listing.error, boundDefault });
+    return c.json({ models, listed: listing.added.length, found: listing.found, listError: listing.error, boundDefault });
   });
 
   r.post("/connections/:id/models", async (c) => {

@@ -81,10 +81,11 @@ export function ModelsPage() {
   async function probe(connId: string, includeListed = false) {
     setBusy(connId);
     setError(null);
+    setNotice("Listing inventory and probing models… This may take time for large inventories.");
     try {
-      const res = await api<{ models: Model[]; listed: number; listError?: string }>(`/connections/${connId}/probe?includeListed=${includeListed}`, { method: "POST" });
+      const res = await api<{ models: Model[]; listed: number; found?: number; listError?: string }>(`/connections/${connId}/probe?includeListed=${includeListed}`, { method: "POST" });
       const entitled = res.models.filter((m) => m.status === "entitled").length;
-      setNotice(`Checked ${res.models.filter((m) => includeListed || m.origin !== "listed").length} known models: ${entitled} entitled. ${res.listed} new models listed. ${includeListed ? "Listed models were also probed." : "Use Scan inventory to probe listed models too."} Entitled includes validation errors: review Detail and test a chat. ${res.listError ? `Discovery: ${res.listError}` : "Inventory is limited to what the gateway exposes."}`);
+      setNotice(`Checked ${res.models.filter((m) => includeListed || m.origin !== "listed").length} known models: ${entitled} entitled. ${res.found === undefined ? "" : `Listing returned ${res.found} unique IDs. `}${res.listed} new models added; existing models keep their settings. ${includeListed ? "Listed models were also probed." : "Use Scan inventory to probe listed models too."} Entitled includes validation errors: review Detail and test a chat. ${res.listError ? `Discovery: ${res.listError}` : "Inventory is limited to what the gateway exposes."}`);
       await refresh();
     } catch (e) {
       setError((e as Error).message);

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { resolveUpstream, type Dialect } from "@rig/core";
 import type { AppContext } from "./context";
+import { deploymentList } from "./deployment-list";
 
 const HOP_BY_HOP = new Set(["host", "content-length", "connection", "keep-alive", "transfer-encoding", "x-rig-proxy-token", "x-api-key", "authorization", "api-key", "ocp-apim-subscription-key"]);
 const RESPONSE_STRIP = new Set(["content-encoding", "content-length", "transfer-encoding", "connection", "keep-alive"]);
@@ -40,11 +41,13 @@ export function proxyRoutes(app: AppContext): Hono {
     let url: string;
     let headers: Record<string, string>;
     let body: string | undefined;
+    let deploymentInventory = false;
 
     if (isList) {
       const profile = app.profiles.get(conn.profileId);
       const spec = app.connections.discovery(conn.id) ?? profile?.listModels;
       if (!spec || spec.dialect !== dialect) return c.json({ error: "this connection's profile has no model listing route" }, 404);
+      deploymentInventory = spec.responseFormat === "azure-deployments";
       const pseudo = { route: spec.route, query: undefined, bodyModel: "", dialect } as Parameters<typeof resolveUpstream>[1];
       const t = resolveUpstream(conn, pseudo, secret);
       url = t.url;
@@ -93,6 +96,13 @@ export function proxyRoutes(app: AppContext): Hono {
       return c.json({ error: `upstream unreachable: ${(e as Error).message}` }, 502);
     }
     const outHeaders = new Headers();
+    if (deploymentInventory && upstream.ok) {
+      let payload: unknown;
+      try { payload = await upstream.json(); }
+      catch { return c.json({ error: { message: "Deployment inventory did not return valid JSON." } }, 422); }
+      try { return c.json(deploymentList(payload)); }
+      catch (e) { return c.json({ error: { message: (e as Error).message } }, 422); }
+    }
     upstream.headers.forEach((v, k) => {
       if (!RESPONSE_STRIP.has(k.toLowerCase())) outHeaders.set(k, v);
     });

@@ -45,7 +45,7 @@ export function seedFromProfile(app: AppContext, conn: Connection, profile: Gate
 }
 
 /** List models through the gateway (when the profile supports it) and add unknown ones as "listed". */
-export async function discoverListed(app: AppContext, conn: Connection, profile: GatewayProfile): Promise<{ added: Model[]; error?: string }> {
+export async function discoverListed(app: AppContext, conn: Connection, profile: GatewayProfile): Promise<{ added: Model[]; found?: number; error?: string }> {
   const spec = app.connections.discovery(conn.id) ?? profile.listModels;
   if (!spec) return { added: [], error: "No model-listing endpoint configured. Only known models were probed; this is not a complete inventory." };
   const adapter = adapterFor(spec.dialect);
@@ -62,7 +62,7 @@ export async function discoverListed(app: AppContext, conn: Connection, profile:
       m.status = "listed";
       added.push(app.models.upsert(m));
     }
-    return { added };
+    return { added, found: new Set(ids).size };
   } catch (e) {
     return { added: [], error: adapter.normalizeError(e).message };
   }

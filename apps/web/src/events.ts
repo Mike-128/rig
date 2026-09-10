@@ -2,7 +2,7 @@ import type { RunEvent, Usage } from "@rig/core/types";
 
 export type ThreadItem =
   | { kind: "user"; key: string; text: string }
-  | { kind: "assistant"; key: string; text: string; reasoning?: string; live?: boolean }
+  | { kind: "assistant"; key: string; text: string; reasoning?: string; live?: boolean; latencyMs?: number }
   | { kind: "tool"; key: string; callId: string; name: string; input: unknown; output?: string; isError?: boolean; durationMs?: number }
   | { kind: "approval"; key: string; runId: string; callId: string; name: string; input: unknown; decision?: "approve" | "deny" }
   | { kind: "notice"; key: string; level: "warning" | "error" | "info"; text: string };
@@ -15,6 +15,7 @@ export interface ThreadState {
   costUsd: number;
   lastEventId: number;
   live: { text: string; reasoning: string; runId?: string };
+  turnTiming?: { runId: string; startedAt: number };
 }
 
 export function emptyThread(): ThreadState {
@@ -43,9 +44,13 @@ export function reduceEvent(s: ThreadState, ev: RunEvent): ThreadState {
   const key = `${ev.runId}:${ev.id ?? Math.random()}`;
   switch (ev.type) {
     case "run_started":
+      next.turnTiming = undefined;
       next.activeRunId = ev.runId;
       next.status = "running";
       next.live = { text: "", reasoning: "", runId: ev.runId };
+      break;
+    case "turn_started":
+      next.turnTiming = { runId: ev.runId, startedAt: Date.parse(ev.ts) };
       break;
     case "user_message":
       items.push({ kind: "user", key, text: textOf(ev.message) });
@@ -59,7 +64,10 @@ export function reduceEvent(s: ThreadState, ev: RunEvent): ThreadState {
     case "assistant_message": {
       const text = textOf(ev.message);
       const reasoning = reasoningOf(ev.message);
-      if (text || reasoning) items.push({ kind: "assistant", key, text, reasoning: reasoning || undefined });
+      const elapsed = s.turnTiming?.runId === ev.runId ? Date.parse(ev.ts) - s.turnTiming.startedAt : NaN;
+      const latencyMs = Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : undefined;
+      if (text || reasoning) items.push({ kind: "assistant", key, text, reasoning: reasoning || undefined, latencyMs });
+      next.turnTiming = undefined;
       next.live = { text: "", reasoning: "", runId: ev.runId };
       break;
     }
@@ -91,17 +99,20 @@ export function reduceEvent(s: ThreadState, ev: RunEvent): ThreadState {
       items.push({ kind: "notice", key, level: "warning", text: ev.message });
       break;
     case "run_completed":
+      next.turnTiming = undefined;
       next.status = "idle";
       next.activeRunId = undefined;
       next.live = { text: "", reasoning: "" };
       break;
     case "run_failed":
+      next.turnTiming = undefined;
       items.push({ kind: "notice", key, level: "error", text: `Run failed: ${ev.error.message}` });
       next.status = "idle";
       next.activeRunId = undefined;
       next.live = { text: "", reasoning: "" };
       break;
     case "run_cancelled":
+      next.turnTiming = undefined;
       items.push({ kind: "notice", key, level: "info", text: "Run cancelled" });
       next.status = "idle";
       next.activeRunId = undefined;
