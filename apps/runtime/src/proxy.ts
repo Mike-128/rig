@@ -43,11 +43,18 @@ export function proxyRoutes(app: AppContext): Hono {
 
     if (isList) {
       const profile = app.profiles.get(conn.profileId);
-      const spec = profile?.listModels;
+      const spec = app.connections.discovery(conn.id) ?? profile?.listModels;
       if (!spec || spec.dialect !== dialect) return c.json({ error: "this connection's profile has no model listing route" }, 404);
       const pseudo = { route: spec.route, query: undefined, bodyModel: "", dialect } as Parameters<typeof resolveUpstream>[1];
       const t = resolveUpstream(conn, pseudo, secret);
       url = t.url;
+      const paged = new URL(url);
+      const supplied = new URL(c.req.url).searchParams;
+      for (const key of ["after", "before", "after_id", "before_id", "limit", "page", "page_size", "last_id"]) {
+        const value = supplied.get(key);
+        if (value !== null) paged.searchParams.set(key, value);
+      }
+      url = paged.toString();
       headers = t.headers;
     } else {
       const raw = await c.req.text();
@@ -69,10 +76,12 @@ export function proxyRoutes(app: AppContext): Hono {
     }
 
     // Forward benign headers (content-type, accept, anthropic-version, anthropic-beta, user-agent), drop auth and hop-by-hop.
+    const configured = new Set(Object.keys(headers).map((name) => name.toLowerCase()));
     for (const [k, v] of Object.entries(c.req.header())) {
       const lk = k.toLowerCase();
       if (HOP_BY_HOP.has(lk)) continue;
       if (lk === conn.auth.headerName.toLowerCase()) continue;
+      if (configured.has(lk)) continue;
       headers[k] = v;
     }
     if (body !== undefined) headers["content-type"] = "application/json";

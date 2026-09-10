@@ -4,6 +4,7 @@ import { DEFAULT_CAPABILITIES, type Dialect } from "@rig/core";
 import type { AppContext } from "../context";
 import { discoverListed, ensureDefaultAlias, entryToModel, probeConnection, probeModel, seedFromProfile } from "../catalog";
 import { newId } from "../ids";
+import { DiscoverySpec, ExtraHeaders } from "../connection-settings";
 
 const CreateConnection = z.object({
   name: z.string().min(1).max(60),
@@ -12,7 +13,7 @@ const CreateConnection = z.object({
   baseUrl: z.string().url().optional(),
   headerName: z.string().min(1).optional(),
   headerPrefix: z.string().optional(),
-  extraHeaders: z.record(z.string(), z.string()).optional(),
+  extraHeaders: ExtraHeaders.optional(),
   kind: z.enum(["direct", "gateway", "local"]).optional(),
 });
 
@@ -41,6 +42,8 @@ export function catalogRoutes(app: AppContext): Hono {
     const b = parsed.data;
     const profile = app.profiles.get(b.profileId);
     if (!profile) return c.json({ error: `unknown profile ${b.profileId}` }, 400);
+    const headers = ExtraHeaders.safeParse({ ...profile.extraHeaders, ...b.extraHeaders });
+    if (!headers.success || Object.keys(headers.data).includes((b.headerName ?? profile.auth.headerName).toLowerCase())) return c.json({ error: "Invalid extra headers; use the Key field for authentication" }, 400);
     if (app.connections.getByName(b.name)) return c.json({ error: `connection "${b.name}" already exists` }, 409);
     const id = newId("conn");
     await app.secrets.set(id, b.key);
@@ -52,7 +55,7 @@ export function catalogRoutes(app: AppContext): Hono {
       kind,
       baseUrl: b.baseUrl ?? profile.baseUrl,
       auth: { headerName: b.headerName ?? profile.auth.headerName, prefix: b.headerPrefix ?? profile.auth.prefix },
-      extraHeaders: { ...(profile.extraHeaders ?? {}), ...(b.extraHeaders ?? {}) },
+      extraHeaders: headers.data,
       secretLast4: b.key.slice(-4),
     });
     const models = seedFromProfile(app, conn, profile);
@@ -67,13 +70,38 @@ export function catalogRoutes(app: AppContext): Hono {
     return c.json({ ok: true });
   });
 
+  r.patch("/connections/:id/headers", async (c) => {
+    const conn = app.connections.get(c.req.param("id"));
+    if (!conn) return c.json({ error: "not found" }, 404);
+    const parsed = ExtraHeaders.safeParse(await c.req.json());
+    if (!parsed.success || Object.keys(parsed.data).includes(conn.auth.headerName.toLowerCase())) return c.json({ error: "Invalid extra headers: use unique names, no line breaks, and no authentication or transport overrides" }, 400);
+    app.connections.setHeaders(conn.id, parsed.data);
+    return c.json(app.connections.get(conn.id));
+  });
+
+  r.get("/connections/:id/discovery", (c) => {
+    const conn = app.connections.get(c.req.param("id"));
+    if (!conn) return c.json({ error: "not found" }, 404);
+    return c.json({ override: app.connections.discovery(conn.id) ?? null, effective: app.connections.discovery(conn.id) ?? app.profiles.get(conn.profileId)?.listModels ?? null });
+  });
+
+  r.put("/connections/:id/discovery", async (c) => {
+    const conn = app.connections.get(c.req.param("id"));
+    if (!conn) return c.json({ error: "not found" }, 404);
+    const parsed = DiscoverySpec.nullable().safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: "Invalid discovery configuration", issues: parsed.error.issues }, 400);
+    const current = app.connections.discovery(conn.id) ?? app.profiles.get(conn.profileId)?.listModels;
+    app.connections.setDiscovery(conn.id, parsed.data ? { ...(current?.dialect === parsed.data.dialect ? current : {}), ...parsed.data } : null);
+    return c.json({ ok: true });
+  });
+
   /** Discover (list where possible) then probe catalog models. */
   r.post("/connections/:id/probe", async (c) => {
     const conn = app.connections.get(c.req.param("id"));
     if (!conn) return c.json({ error: "not found" }, 404);
     const profile = app.profiles.get(conn.profileId);
     const includeListed = c.req.query("includeListed") === "true";
-    const listing = profile ? await discoverListed(app, conn, profile) : { added: [] };
+    const listing = profile ? await discoverListed(app, conn, profile) : { added: [], error: "No gateway profile available for discovery" };
     const models = await probeConnection(app, conn, { includeListed });
     const boundDefault = ensureDefaultAlias(app);
     return c.json({ models, listed: listing.added.length, listError: listing.error, boundDefault });

@@ -185,6 +185,38 @@ If you need help mapping a sample request, share the endpoint structure, header 
 
 After the actual model routes are configured, probe the intended model and set it as **default**, then continue below.
 
+### Required connection headers (for example, a charge code)
+
+If a gateway responds with a missing-header error, use the header name and value supplied by your company. A charge code is separate from your APIM key.
+
+For a new connection, use the **Additional request headers** table before clicking **Add and probe**. Click **Add header**, enter the **Header field** and **Value**, and add more rows as needed.
+
+For an existing saved connection:
+
+1. Open **Models** and find its saved connection card below **Add a connection**.
+2. Click **Connection settings**.
+3. Under **Additional request headers**, click **Add header** and enter the required field/value pair (for example, `x-company-charge-code` and your assigned code).
+4. Click **Save headers**. Removed rows are removed from the saved configuration too.
+5. Probe the intended model again, then try a short chat.
+
+Saved headers apply to discovery listing, probes, and every model request through that connection, including streamed calls. They survive runtime restarts. Saving clears previous probe results, but does not change the stored API key or aliases and makes no provider requests. SDK headers cannot override these configured values. Keep primary credentials in the **Key** field: additional header values are non-secret metadata stored in the local database and visible in connection settings. Authentication and transport-header overrides are rejected.
+
+A 400 validation response is classified as **entitled** because the gateway was reached; it does not prove the request can complete. Resolve missing headers and other validation errors in **Detail** before treating the model as ready.
+
+### Scan the available model inventory
+
+Click **Scan inventory** on a saved connection to list models (where supported), add newly listed IDs, and probe both known and newly listed models. This uses the saved key and headers and may incur provider usage. Review each model's status and Detail; a listed ID alone does not prove permission, and validation-only entitlement does not prove a successful chat.
+
+Direct-provider profiles may already define a listing endpoint. The generic APIM template does not: a key cannot reveal private deployment routes by itself. If your company exposes an OpenAI-compatible or Anthropic model-list endpoint, configure it under **Connection settings → Model discovery**:
+
+- **Listing dialect:** the format returned by the model-list endpoint.
+- **Model listing route:** the company-supplied GET path, relative to the saved base URL, including any required query parameters.
+- **Inference route for newly discovered models:** the company-supplied request path, optionally containing `{model}` where a listed ID is also the deployment ID. For example, `/deployments/{model}/chat/completions?api-version=COMPANY_VERSION` is a pattern, not an actual gateway configuration.
+
+Click **Save discovery**, then **Scan inventory**. Discovery settings survive restarts. Existing model routes are retained, and **Use profile defaults** removes the connection's discovery override. Each listing configuration describes one dialect; for mixed gateways, configure other models manually or use separate connections for different listing endpoints.
+
+If the gateway has no listing API, uses a different response format, or lists model names that cannot be mapped to deployment routes, obtain an inventory/profile from its administrator. Rig reports absent/failed discovery explicitly and can still probe configured models; it cannot promise an exhaustive list of everything the key permits. It does not guess and scan arbitrary endpoint paths.
+
 ## 7. Test approved model access
 
 Once a default model is configured, explicitly test it with:

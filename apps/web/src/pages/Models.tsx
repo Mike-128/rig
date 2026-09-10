@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Connection, GatewayProfile, Model, ModelAlias } from "@rig/core/types";
 import { api } from "../api";
+import { ConnectionSettings, HeaderFields, headerRecord, type HeaderRow } from "../ConnectionSettings";
 
 type ModelRow = Model & { connectionName: string };
 
@@ -18,6 +19,8 @@ export function ModelsPage() {
   const [key, setKey] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [headerName, setHeaderName] = useState("");
+  const [headers, setHeaders] = useState<HeaderRow[]>([]);
+  const [settingsFor, setSettingsFor] = useState<string | null>(null);
 
   const [manualFor, setManualFor] = useState<string | null>(null);
   const [manual, setManual] = useState({ id: "", dialect: "openai.chat", route: "", bodyModel: "", maxTokensField: "max_tokens", reasoning: false });
@@ -48,7 +51,7 @@ export function ModelsPage() {
     try {
       const res = await api<{ connection: Connection }>("/connections", {
         method: "POST",
-        json: { name, profileId, key, baseUrl: baseUrl || undefined, headerName: headerName || undefined },
+        json: { name, profileId, key, baseUrl: baseUrl || undefined, headerName: headerName || undefined, extraHeaders: headerRecord(headers) },
       });
       setKey("");
       setName("");
@@ -61,13 +64,13 @@ export function ModelsPage() {
     }
   }
 
-  async function probe(connId: string) {
+  async function probe(connId: string, includeListed = false) {
     setBusy(connId);
     setError(null);
     try {
-      const res = await api<{ models: Model[]; listed: number; listError?: string }>(`/connections/${connId}/probe`, { method: "POST" });
+      const res = await api<{ models: Model[]; listed: number; listError?: string }>(`/connections/${connId}/probe?includeListed=${includeListed}`, { method: "POST" });
       const entitled = res.models.filter((m) => m.status === "entitled").length;
-      setNotice(`Probed ${res.models.filter((m) => m.origin !== "listed").length} catalog models: ${entitled} entitled. ${res.listed ? `${res.listed} more listed by the provider (probe them individually).` : ""}${res.listError ? ` Listing failed: ${res.listError}` : ""}`);
+      setNotice(`Checked ${res.models.filter((m) => includeListed || m.origin !== "listed").length} known models: ${entitled} entitled. ${res.listed} new models listed. ${includeListed ? "Listed models were also probed." : "Use Scan inventory to probe listed models too."} Entitled includes validation errors: review Detail and test a chat. ${res.listError ? `Discovery: ${res.listError}` : "Inventory is limited to what the gateway exposes."}`);
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -161,6 +164,7 @@ export function ModelsPage() {
               <input value={headerName} onChange={(e) => setHeaderName(e.target.value)} placeholder="optional" />
             </label>
           </div>
+          <HeaderFields rows={headers} onChange={setHeaders} />
           <button className="primary" onClick={addConnection} disabled={!name.trim() || !key.trim() || busy === "add"}>
             {busy === "add" ? "Adding and probing…" : "Add and probe"}
           </button>
@@ -180,6 +184,8 @@ export function ModelsPage() {
                   </span>
                 </div>
                 <div className="row">
+                  <button onClick={() => setSettingsFor(settingsFor === c.id ? null : c.id)} disabled={busy !== null}>Connection settings</button>
+                  <button title="Lists and probes known and newly listed models; may incur provider usage" onClick={() => probe(c.id, true)} disabled={busy !== null}>Scan inventory</button>
                   <button onClick={() => probe(c.id)} disabled={busy === c.id}>
                     {busy === c.id ? "Probing…" : "List and probe"}
                   </button>
@@ -189,6 +195,8 @@ export function ModelsPage() {
                   </button>
                 </div>
               </div>
+              <p className="muted">Scan inventory sends probe requests and may incur usage. Listed IDs and validation-only entitlement are not proof of a working chat.</p>
+              {settingsFor === c.id && <ConnectionSettings key={c.id} connection={c} onSaved={refresh} onClose={() => setSettingsFor(null)} />}
               {manualFor === c.id && (
                 <div className="card" style={{ marginTop: 10 }}>
                   <div className="grid2">
