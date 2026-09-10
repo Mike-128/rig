@@ -1,4 +1,4 @@
-import type { AuthSpec, Connection, ConnectionKind } from "@rig/core";
+import type { AuthSpec, Connection, ConnectionKind, ListModelsSpec } from "@rig/core";
 import { json, nowIso, type Db } from "../db";
 
 interface Row {
@@ -58,5 +58,20 @@ export class ConnectionStore {
   delete(id: string): void {
     this.db.prepare("DELETE FROM aliases WHERE connection_id = ?").run(id);
     this.db.prepare("DELETE FROM connections WHERE id = ?").run(id);
+  }
+
+  setHeaders(id: string, headers: Record<string, string>): void {
+    this.db.prepare("UPDATE connections SET extra_headers = ? WHERE id = ?").run(JSON.stringify(headers), id);
+    this.db.prepare("UPDATE models SET status = 'unprobed', status_message = NULL, last_probed_at = NULL WHERE connection_id = ?").run(id);
+  }
+
+  discovery(id: string): ListModelsSpec | undefined {
+    const row = this.db.prepare("SELECT spec FROM connection_discovery WHERE connection_id = ?").get(id) as { spec: string } | undefined;
+    return row ? JSON.parse(row.spec) : undefined;
+  }
+
+  setDiscovery(id: string, spec: ListModelsSpec | null): void {
+    if (!spec) this.db.prepare("DELETE FROM connection_discovery WHERE connection_id = ?").run(id);
+    else this.db.prepare("INSERT INTO connection_discovery (connection_id, spec) VALUES (?, ?) ON CONFLICT(connection_id) DO UPDATE SET spec = excluded.spec").run(id, JSON.stringify(spec));
   }
 }

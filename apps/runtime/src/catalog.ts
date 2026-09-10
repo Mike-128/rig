@@ -46,19 +46,19 @@ export function seedFromProfile(app: AppContext, conn: Connection, profile: Gate
 
 /** List models through the gateway (when the profile supports it) and add unknown ones as "listed". */
 export async function discoverListed(app: AppContext, conn: Connection, profile: GatewayProfile): Promise<{ added: Model[]; error?: string }> {
-  const spec = profile.listModels;
-  if (!spec) return { added: [] };
+  const spec = app.connections.discovery(conn.id) ?? profile.listModels;
+  if (!spec) return { added: [], error: "No model-listing endpoint configured. Only known models were probed; this is not a complete inventory." };
   const adapter = adapterFor(spec.dialect);
   const pseudo = { ...entryToModel(conn, { id: "__list__", dialect: spec.dialect, route: spec.route }) };
   try {
-    const ids = await adapter.listModels(adapterConnection(app, conn, pseudo));
+    const ids = await adapter.listModels(adapterConnection(app, conn, pseudo), AbortSignal.timeout(30_000));
     const filter = spec.filter ? new RegExp(spec.filter) : undefined;
     const added: Model[] = [];
     for (let raw of ids) {
       if (spec.stripPrefix && raw.startsWith(spec.stripPrefix)) raw = raw.slice(spec.stripPrefix.length);
       if (filter && !filter.test(raw)) continue;
       if (app.models.find(conn.id, raw)) continue;
-      const m = entryToModel(conn, { id: raw, dialect: spec.dialect, route: spec.defaultRoute, query: spec.defaultQuery, params: spec.defaultParams }, "listed");
+      const m = entryToModel(conn, { id: raw, dialect: spec.dialect, route: spec.defaultRoute.replaceAll("{model}", encodeURIComponent(raw)), query: spec.defaultQuery, params: spec.defaultParams }, "listed");
       m.status = "listed";
       added.push(app.models.upsert(m));
     }

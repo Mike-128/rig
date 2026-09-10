@@ -32,6 +32,10 @@ CREATE TABLE IF NOT EXISTS models (
   last_probed_at TEXT,
   origin TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS connection_discovery (
+  connection_id TEXT PRIMARY KEY REFERENCES connections(id) ON DELETE CASCADE,
+  spec TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS models_conn ON models(connection_id);
 CREATE TABLE IF NOT EXISTS aliases (
   alias TEXT PRIMARY KEY,
