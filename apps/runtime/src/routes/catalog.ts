@@ -21,13 +21,15 @@ const ManualModel = z.object({
   id: z.string().min(1),
   displayName: z.string().optional(),
   dialect: z.enum(["anthropic.messages", "openai.chat"]),
-  route: z.string().min(1),
+  route: z.string().trim().min(1),
   query: z.record(z.string(), z.string()).optional(),
   bodyModel: z.string().optional(),
   maxTokensField: z.enum(["max_tokens", "max_completion_tokens"]).optional(),
   reasoning: z.boolean().optional(),
   pricing: z.object({ input: z.number(), output: z.number(), cachedInput: z.number().optional() }).optional(),
 });
+
+const EditManualModel = ManualModel.omit({ id: true, pricing: true }).partial().strict();
 
 export function catalogRoutes(app: AppContext): Hono {
   const r = new Hono();
@@ -135,6 +137,31 @@ export function catalogRoutes(app: AppContext): Hono {
   r.get("/models", (c) => {
     const conns = new Map(app.connections.list().map((x) => [x.id, x]));
     return c.json(app.models.list().map((m) => ({ ...m, connectionName: conns.get(m.connectionId)?.name ?? "?" })));
+  });
+
+  r.patch("/models/:connectionId/:providerModelId", async (c) => {
+    const model = app.models.find(c.req.param("connectionId"), c.req.param("providerModelId"));
+    if (!model) return c.json({ error: "not found" }, 404);
+    if (model.origin !== "manual") return c.json({ error: "Only manually added models can be edited" }, 409);
+    const parsed = EditManualModel.safeParse(await c.req.json());
+    if (!parsed.success) return c.json({ error: "invalid body", issues: parsed.error.issues }, 400);
+    const b = parsed.data;
+    const updated = {
+      ...model,
+      displayName: b.displayName === undefined ? model.displayName : b.displayName || model.providerModelId,
+      dialect: b.dialect ?? model.dialect,
+      route: b.route ?? model.route,
+      query: b.query ?? model.query,
+      bodyModel: b.bodyModel === undefined ? model.bodyModel : b.bodyModel || model.providerModelId,
+      capabilities: { ...model.capabilities, reasoning: b.reasoning ?? model.capabilities.reasoning },
+      params: { ...model.params, ...(b.maxTokensField ? { maxTokensField: b.maxTokensField } : {}) },
+      // A previous entitlement result says nothing about the edited endpoint.
+      status: "unprobed" as const,
+      statusMessage: undefined,
+      lastProbedAt: undefined,
+    };
+    app.models.upsert(updated);
+    return c.json(updated);
   });
 
   r.post("/models/:connectionId/:providerModelId/probe", async (c) => {
