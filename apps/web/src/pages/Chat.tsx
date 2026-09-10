@@ -249,6 +249,11 @@ function Item({ item, onDecide }: { item: ThreadItem; onDecide: (i: Extract<Thre
           <div className="who">assistant</div>
           {item.reasoning && <div className="reasoning">{item.reasoning}</div>}
           <div className="body">{item.text}</div>
+          {item.latencyMs !== undefined && (
+            <div className="meta" title="Elapsed time from model turn start to completed response, including streaming. Excludes earlier queue, tool, and approval time.">
+              Response latency: {item.latencyMs.toLocaleString()} ms
+            </div>
+          )}
         </div>
       );
     case "tool":
