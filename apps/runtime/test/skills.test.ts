@@ -80,6 +80,31 @@ afterAll(async () => {
 });
 
 describe("skills", () => {
+  it("retrieves configured knowledge and remembers approved notes across separate chats", async () => {
+    const folder = path.join(home, "reference");
+    mkdirSync(path.join(folder, "nested"), { recursive: true });
+    writeFileSync(path.join(folder, "nested", "guide.md"), "Project code: ORANGE");
+    const saved = await api<{ ok: boolean }>("/agents/research", { method: "PUT", json: {
+      name: "Research", instructions: "Use reference sources and notes.", model: { alias: "default" },
+      knowledge: [{ name: "reference", path: folder }], memory: true,
+      tools: ["knowledge_read", "memory_read", "memory_write"], approvals: ["memory_write"],
+    } });
+    expect(saved.ok).toBe(true);
+    const first = await api<Session>("/sessions", { method: "POST", json: { agent: "research" } });
+    await runToEnd(first.id, "Read knowledge");
+    const read = await api<{ events: RunEvent[] }>(`/sessions/${first.id}`);
+    expect(read.events.some((e) => e.type === "tool_result" && e.name === "knowledge_read" && !e.isError && e.output.includes("ORANGE"))).toBe(true);
+    const second = await api<Session>("/sessions", { method: "POST", json: { agent: "research" } });
+    await runToEnd(second.id, "Remember the project code");
+    const notes = await api<{ events: RunEvent[] }>(`/sessions/${second.id}`);
+    expect(notes.events.some((e) => e.type === "approval_requested" && e.name === "memory_write")).toBe(true);
+    expect(notes.events.some((e) => e.type === "tool_result" && e.name === "memory_write" && !e.isError)).toBe(true);
+    const third = await api<Session>("/sessions", { method: "POST", json: { agent: "research" } });
+    await runToEnd(third.id, "Recall notes");
+    const recalled = await api<{ events: RunEvent[] }>(`/sessions/${third.id}`);
+    expect(recalled.events.some((e) => e.type === "tool_result" && e.name === "memory_read" && e.output.includes("ORANGE"))).toBe(true);
+    await api("/agents/research", { method: "DELETE" });
+  });
   it("ships bundled skills and seeds the agent builder that uses them", async () => {
     const { skills, problems } = await api<{ skills: SkillSummary[]; problems: unknown[] }>("/skills");
     expect(problems).toHaveLength(0);
@@ -127,11 +152,12 @@ describe("skills", () => {
         sandbox: 0,
       },
     });
+    const requestOffset = upstream.requests.length;
     const session = await api<Session>("/sessions", { method: "POST", json: { agent: "skilled" } });
     const { runId } = await runToEnd(session.id, "use a skill to help me");
 
     // The first request advertised the skill by name and description, not its body.
-    const first = upstream.requests.filter((r) => r.path === "/v1/messages")[0]!;
+    const first = upstream.requests.slice(requestOffset).filter((r) => r.path === "/v1/messages")[0]!;
     const system = String((first.body as { system?: string }).system ?? "");
     expect(system).toContain("Available skills");
     expect(system).toContain("agent-design");

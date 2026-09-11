@@ -132,7 +132,7 @@ export class RunManager {
         workspace: session.workspace,
         signal: controller.signal,
         skills: this.app.skills.list(),
-        host: createHost(this.app),
+        host: createHost(this.app, agent),
         requestApproval: (callId) =>
           new Promise<ApprovalDecision>((resolve) => {
             state.approvals.set(callId, (d) => {

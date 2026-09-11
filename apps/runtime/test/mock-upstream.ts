@@ -58,6 +58,9 @@ export function chooseTool(messages: { role: string; content: unknown }[], tools
     }),
   );
   const text = lastUserText(messages);
+  if (names.has("knowledge_read") && /knowledge/i.test(text)) return { name: "knowledge_read", args: { source: "reference", path: "nested/guide.md" } };
+  if (names.has("memory_write") && /remember/i.test(text)) return { name: "memory_write", args: { content: "Project code: ORANGE (reference/nested/guide.md)", expectedContent: "" } };
+  if (names.has("memory_read") && /recall/i.test(text)) return { name: "memory_read", args: {} };
   if (names.has("agent_write") && /build|create an agent/i.test(text)) {
     return {
       name: "agent_write",

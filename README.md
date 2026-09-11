@@ -10,6 +10,8 @@ This is the v1 slice: local runtime, loopback proxy, native engine, two dialects
 
 ## Layout
 
+**Give an agent a reference library:** attach local folders or mounted network shares in the agent editor, with optional separate persistent notes. See [knowledge folders and memory](docs/knowledge-folders.md).
+
 ```
 packages/core     canonical types, adapters, gateway profiles, native engine, built-in tools
 apps/runtime      local daemon: API, loopback proxy, SQLite event log, keychain, scheduler

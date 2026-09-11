@@ -54,13 +54,17 @@ export function validateAgentDefinition(input: unknown, opts: ValidateOptions = 
   // sandbox 0 forbids process spawn and writes
   if (def.sandbox === 0) {
     for (const t of def.tools) {
-      if (t === "file_write" || t === "shell") {
+      if (t === "file_write" || t === "shell" || t === "memory_write") {
         issues.push({ path: "tools", message: `"${t}" requires sandbox level 1 or higher`, severity: "error" });
       }
     }
   }
 
   // skills need load_skill to be reachable
+  if (def.knowledge?.length && !def.tools.includes("knowledge_read")) issues.push({ path: "tools", message: "Knowledge folders require knowledge_read", severity: "error" });
+  if (def.memory && !def.tools.includes("memory_read")) issues.push({ path: "tools", message: "Persistent memory requires memory_read", severity: "error" });
+  if (!def.memory && def.tools.some((t) => t === "memory_read" || t === "memory_write")) issues.push({ path: "memory", message: "Enable persistent memory to use memory tools", severity: "error" });
+  if (def.tools.includes("memory_write") && !def.approvals.includes("memory_write")) issues.push({ path: "approvals", message: "memory_write requires approval", severity: "error" });
   if (def.skills.length && !def.tools.includes("load_skill")) {
     issues.push({
       path: "tools",
