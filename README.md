@@ -47,7 +47,35 @@ Open http://localhost:5173.
 2. **Agents**: the default `assistant` uses the `default` alias. Create your own: instructions, model (alias or explicit), tools, approvals, sandbox level, budgets. Save creates a versioned YAML under `~/.rig/agents`.
 3. **Chat**: start a session with an agent and talk to it. Tool calls show inline; approval-gated tools pause the run until you approve or deny.
 
+To work on an existing project, click **Browse project folder** under the new session's workspace field, navigate to your project, and choose **Use this folder** before starting the session. The picker browses the machine running Rig; files stay in place and are not uploaded. Enable `file_read` on the agent for reading, and `file_write`/`shell` with the appropriate approvals for changes. Existing sessions keep their workspace. You can still enter a path manually for another drive or network share.
+
+## Updating Rig
+
+Already installed from this Git repository? Update the existing clone; you do not need to clone again or re-enter your keys.
+
+1. Finish or cancel active runs. Stop Rig and, if used, Vite with **Ctrl+C** in their terminals. Interrupted runs do not automatically resume.
+2. Open a terminal in the repository folder and run `git status --short` and `git branch --show-current`. If you have local changes, commit or stash the changes you want to keep before updating; do not discard them to force an update. The commands below target the published `main` branch.
+3. From a clean checkout, run each command separately, proceeding only if it succeeds:
+
+   ```powershell
+   git switch main
+   git pull --ff-only
+   pnpm.cmd install --frozen-lockfile
+   pnpm.cmd build
+   pnpm.cmd rig serve
+   ```
+
+   On macOS/Linux, use `pnpm` in place of `pnpm.cmd`. On Windows with the user-local installation, first restore `$env:Path = "$env:LOCALAPPDATA\rig-tools;$env:Path"`. Restore any custom `RIG_HOME`, port, proxy, and approved CA settings before starting the runtime. See the [Windows update steps](docs/windows-setup.md#restart-after-pulling-an-update).
+
+4. Leave the runtime running and reload [http://127.0.0.1:7777](http://127.0.0.1:7777), or your configured port. In another terminal, run `pnpm.cmd rig doctor` (`pnpm rig doctor` on macOS/Linux). For Vite development, also restart `pnpm.cmd dev:web` in a separate terminal and use its printed URL.
+
+Saved agents, connections, model settings, and history live in `RIG_HOME` (default `~/.rig`), separately from the source checkout. Keep the same data directory and OS account for access to saved state and keys. Do not delete that directory as part of an update. If backing it up, stop Rig first and copy the complete directory, including any SQLite `-wal` and `-shm` sidecars; OS-keychain credentials are separate.
+
+If Git refuses a fast-forward, stop and inspect the branch/local commits rather than using a hard reset. An open, unmerged PR or changes that have not been pushed will not arrive through a pull of `main`. If the UI looks unchanged after an update, confirm the build succeeded, restart the runtime, and hard-refresh the browser. `git rev-parse --short HEAD` identifies the installed source revision.
+
 ## Building agents by chatting
+
+For Claude behind a gateway, see [Testing the Anthropic SDK through APIM](docs/testing-anthropic-sdk.md). The guide covers connection headers, model routes, agent settings, automated compatibility tests, and a live streaming/tool-call check. It tests Rig's Anthropic Messages integration; it does not imply Claude Code feature parity.
 
 Open **Chat** and click *Describe an agent in chat*. That starts a session with the seeded `agent-builder`, which you talk to in plain language:
 
@@ -108,6 +136,8 @@ pnpm test
 ```
 
 The runtime test suite starts a mock upstream that speaks both dialects and walks the v1 definition of done end to end: probe, create, save, run with a tool call and an approval, restart, replay.
+
+The [Anthropic SDK testing guide](docs/testing-anthropic-sdk.md#automated-compatibility-test-no-provider-key) includes a focused APIM test that checks routing, headers, streamed tool arguments, approval/denial, and tool-result follow-up requests without contacting a provider.
 
 ## License
 

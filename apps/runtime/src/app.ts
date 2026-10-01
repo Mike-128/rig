@@ -19,6 +19,7 @@ import { agentRoutes } from "./routes/agents";
 import { sessionRoutes } from "./routes/sessions";
 import { skillRoutes } from "./routes/skills";
 import { seedDefaults } from "./seed";
+import { folderRoutes } from "./routes/folders";
 
 export interface BuiltApp {
   app: AppContext;
@@ -55,6 +56,7 @@ export async function buildApp(overrides: Partial<RuntimeConfig> = {}, opts: { f
   hono.route("/api/agents", agentRoutes(app));
   hono.route("/api/skills", skillRoutes(app));
   hono.route("/api", sessionRoutes(app));
+  hono.route("/api", folderRoutes());
   hono.onError((err, c) => {
     console.error("[rig] unhandled", err);
     return c.json({ error: err.message }, 500);
