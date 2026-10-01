@@ -58,6 +58,9 @@ export function chooseTool(messages: { role: string; content: unknown }[], tools
     }),
   );
   const text = lastUserText(messages);
+  if (names.has("knowledge_read") && /knowledge/i.test(text)) return { name: "knowledge_read", args: { source: "reference", path: "nested/guide.md" } };
+  if (names.has("memory_write") && /remember/i.test(text)) return { name: "memory_write", args: { content: "Project code: ORANGE (reference/nested/guide.md)", expectedContent: "" } };
+  if (names.has("memory_read") && /recall/i.test(text)) return { name: "memory_read", args: {} };
   if (names.has("agent_write") && /build|create an agent/i.test(text)) {
     return {
       name: "agent_write",
@@ -92,7 +95,7 @@ function openaiToolResult(messages: { role: string; content: unknown }[]): strin
   return undefined;
 }
 
-export function startMockUpstream(): Promise<Started> {
+export function startMockUpstream(options: { anthropicGateway?: { route: string; model: string } } = {}): Promise<Started> {
   const requests: Started["requests"] = [];
   const server = http.createServer(async (req, res) => {
     const raw = await readBody(req);
@@ -108,7 +111,9 @@ export function startMockUpstream(): Promise<Started> {
       res.end(JSON.stringify(obj));
     };
 
-    if (!authOk(req)) {
+    const gateway = options.anthropicGateway;
+    const authenticated = gateway ? req.headers["ocp-apim-subscription-key"] === GOOD_KEY : authOk(req);
+    if (!authenticated) {
       if (req.url?.startsWith("/v1/messages")) return json(401, { type: "error", error: { type: "authentication_error", message: "invalid x-api-key" } });
       return json(401, { error: { message: "Incorrect API key provided", type: "invalid_request_error", code: "invalid_api_key" } });
     }
@@ -122,8 +127,11 @@ export function startMockUpstream(): Promise<Started> {
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
 
     // ---------------- Anthropic dialect ----------------
-    if (req.url === "/v1/messages" && req.method === "POST") {
-      if (model !== "mock-claude") return json(404, { type: "error", error: { type: "not_found_error", message: `model: ${model}` } });
+    if (req.url === (gateway?.route ?? "/v1/messages") && req.method === "POST") {
+      if (gateway && (req.headers["anthropic-version"] !== "2023-06-01" || req.headers["x-test-project"] !== "synthetic-project" || "anthropic_version" in body || typeof body.max_tokens !== "number")) {
+        return json(400, { type: "error", error: { type: "invalid_request_error", message: "Standard Messages headers and body required" } });
+      }
+      if (model !== (gateway?.model ?? "mock-claude")) return json(404, { type: "error", error: { type: "not_found_error", message: `model: ${model}` } });
       const prior = anthropicToolResult(messages);
       const plan = hasTools && !prior ? chooseTool(messages, body.tools) : undefined;
       const text = prior ? `The file says: ${prior}` : `You said: ${lastUserText(messages)}`;

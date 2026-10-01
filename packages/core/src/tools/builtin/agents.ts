@@ -106,6 +106,8 @@ export const agentWriteTool: ToolSpec = {
           description: "Skill names to attach, from skill_list. Their descriptions sit in the agent's context and it loads the full instructions on demand.",
           items: { type: "string" },
         },
+        knowledge: { type: "array", description: "Read-only reference folders explicitly supplied by the user. Enable knowledge_read and knowledge_search. Paths refer to the runtime machine, including mounted shares.", items: { type: "object", properties: { name: { type: "string" }, path: { type: "string" }, description: { type: "string" } }, required: ["name", "path"], additionalProperties: false } },
+        memory: { type: "boolean", description: "Enable separate persistent notes shared across this agent's sessions. Requires memory_read; optional memory_write requires sandbox 1 and approval." },
         sandbox: { type: "integer", enum: [0, 1], description: "0 is read-only with no process spawn; 1 allows writes and shell inside the workspace. Defaults to 1." },
         approvals: {
           type: "array",

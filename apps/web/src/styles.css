@@ -27,7 +27,7 @@ a {
 }
 .app {
   display: grid;
-  grid-template-rows: 44px 1fr;
+  grid-template-rows: 56px 1fr;
   height: 100vh;
 }
 .nav {
@@ -39,8 +39,16 @@ a {
   background: var(--panel);
 }
 .nav .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
   font-weight: 700;
   margin-right: 12px;
+}
+.nav .brand img {
+  display: block;
+  object-fit: contain;
 }
 .nav a {
   padding: 6px 10px;

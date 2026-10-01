@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentSummary, RunEvent, Session } from "@rig/core/types";
 import { api, streamSession } from "../api";
 import { emptyThread, reduceAll, reduceEvent, type ThreadItem, type ThreadState } from "../events";
+import { FolderPicker } from "../FolderPicker";
 
 interface SessionDetail {
   session: Session;
@@ -18,6 +19,7 @@ export function ChatPage({ initialSession }: { initialSession?: string }) {
   const [input, setInput] = useState("");
   const [agentForNew, setAgentForNew] = useState("assistant");
   const [workspace, setWorkspace] = useState("");
+  const [choosingFolder, setChoosingFolder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const unsubRef = useRef<() => void>(() => {});
@@ -159,6 +161,10 @@ export function ChatPage({ initialSession }: { initialSession?: string }) {
           <span>Workspace directory (optional)</span>
           <input value={workspace} onChange={(e) => setWorkspace(e.target.value)} placeholder="defaults to a scratch folder" />
         </label>
+        <button type="button" onClick={() => setChoosingFolder(!choosingFolder)} aria-expanded={choosingFolder} style={{ marginBottom: 8 }}>
+          📁 Browse project folder
+        </button>
+        {choosingFolder && <FolderPicker initialPath={workspace} onClose={() => setChoosingFolder(false)} onSelect={(folder) => { setWorkspace(folder); setChoosingFolder(false); }} />}
         <button className="primary" onClick={newSession} style={{ width: "100%" }}>
           Start session
         </button>

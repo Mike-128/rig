@@ -157,6 +157,12 @@ Env: `RIG_HOME`, `RIG_PORT` (default 7777), `RIG_MAX_RUNS` (default 4), `RIG_URL
 
 Connection metadata headers are stored in SQLite `extra_headers`; these values are visible in settings and are **not secret storage**. Discovery overrides persist separately in `connection_discovery`. Keep primary credentials in the existing secret backend. Removing a discovery override restores profile defaults.
 
+### Knowledge folders and persistent notes
+
+Agent definitions can attach named `knowledge` folders (absolute local/mounted/UNC paths) and optionally enable `memory`. The runtime scopes `createHost(app, agent)` to the session's pinned agent version; do not give knowledge tools access to other agents' sources. `knowledge_read` browses/reads bounded UTF-8 excerpts; `knowledge_search` performs bounded literal search. Paths are checked lexically and with realpath; junction/symlink escapes are rejected. Source reads do not expand workspace write access. `apps/runtime/src/knowledge.ts` implements filesystem access so the engine still receives HostServices rather than reading files itself.
+
+`memory_read`/`memory_write` access separate per-agent SQLite notes (`agent_memory`). Writes require sandbox 1, explicit approval, and an expected-content match to prevent stale overwrites. Notes persist across sessions/versions and restarts; deleting the agent cascades to notes. No corpus ingestion or semantic index exists. Retrieved files and notes are reference data, not higher-priority instructions. See `docs/knowledge-folders.md` for limits and privacy semantics, and the runtime knowledge/skills tests for confinement, restart, scheduler retrieval, and cross-session notes coverage.
+
 ### Connection headers and discovery
 
 The Models UI supports adding and editing connection-wide metadata headers. The proxy injects them into listing, probes, and inference, including streaming. Header validation rejects authentication/transport overrides, case-insensitive duplicates, invalid names, and line breaks. Configured headers cannot be overridden by SDK request headers. Saving headers resets stale probe statuses while preserving keys and aliases.

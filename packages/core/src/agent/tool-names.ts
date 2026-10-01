@@ -1,6 +1,10 @@
 /** Tool names an agent definition may reference. Kept separate to avoid a schema/tool import cycle. */
 export const AGENT_TOOL_NAMES = [
   "file_read",
+  "knowledge_read",
+  "knowledge_search",
+  "memory_read",
+  "memory_write",
   "file_write",
   "web_fetch",
   "shell",
@@ -16,7 +20,7 @@ export const AGENT_TOOL_NAMES = [
 export type BuiltinToolName = (typeof AGENT_TOOL_NAMES)[number];
 
 /** Tools with side effects. Approval-required by default when enabled. */
-export const SIDE_EFFECT_TOOLS: readonly BuiltinToolName[] = ["file_write", "shell", "agent_write", "skill_write"];
+export const SIDE_EFFECT_TOOLS: readonly BuiltinToolName[] = ["file_write", "shell", "agent_write", "skill_write", "memory_write"];
 
 /** Tools that manage the rig itself rather than the workspace. */
 export const MANAGEMENT_TOOLS: readonly BuiltinToolName[] = ["agent_list", "agent_read", "agent_write", "model_list", "skill_list", "skill_write"];

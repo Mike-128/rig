@@ -49,6 +49,11 @@ CREATE TABLE IF NOT EXISTS agents (
   version INTEGER NOT NULL,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS agent_memory (
+  slug TEXT PRIMARY KEY REFERENCES agents(slug) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   kind TEXT NOT NULL,

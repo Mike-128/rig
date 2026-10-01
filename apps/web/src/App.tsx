@@ -5,6 +5,8 @@ import { ModelsPage } from "./pages/Models";
 import { SkillsPage } from "./pages/Skills";
 import { api } from "./api";
 
+const rigLogo = new URL("../../../docs/assets/rig-logo.png", import.meta.url).href;
+
 type Page = "chat" | "agents" | "models" | "skills";
 
 function pageFromHash(): { page: Page; param?: string } {
@@ -30,7 +32,10 @@ export function App() {
   return (
     <div className="app">
       <nav className="nav">
-        <div className="brand">Rig</div>
+        <div className="brand">
+          <img src={rigLogo} alt="" width="44" height="44" />
+          <span>Rig</span>
+        </div>
         <a className={route.page === "chat" ? "active" : ""} href="#/chat">
           Chat
         </a>

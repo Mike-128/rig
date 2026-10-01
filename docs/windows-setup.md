@@ -4,7 +4,7 @@ Use a normal PowerShell terminal, including the terminal in VS Code. These steps
 
 Run commands one step at a time. If a step fails, save its error before continuing.
 
-Already installed? See [the fresh-start sequence](#fresh-start-sequence-after-closing-terminals-or-rebooting). For `unable to get local issuer certificate`, see [Windows certificate trust](#windows-certificate-trust).
+Already installed? See [updating an existing installation](#restart-after-pulling-an-update), or [the fresh-start sequence](#fresh-start-sequence-after-closing-terminals-or-rebooting) if you only need to restart. For `unable to get local issuer certificate`, see [Windows certificate trust](#windows-certificate-trust).
 
 ## 1. Check prerequisites
 
@@ -338,16 +338,37 @@ Refreshing the browser alone does not restart either server. If startup reports 
 
 ### Restart after pulling an update
 
-Stop the runtime and Vite first. For a clean checkout on `main`, run these from the repository root, proceeding only when each command succeeds:
+Use your existing clone; no new installation or key entry is needed. Finish or cancel active work, then stop the runtime and Vite with **Ctrl+C** in their own terminals. Answer **Y** if asked to terminate the batch job. Interrupted runs do not automatically resume.
+
+In ordinary PowerShell, navigate to your actual repository folder and restore the user-local pnpm PATH if that is how you installed it:
 
 ```powershell
+cd "C:\path\to\rig"
+$env:Path = "$env:LOCALAPPDATA\rig-tools;$env:Path"
+git status --short
+git branch --show-current
+```
+
+If there are local changes, commit or stash the changes you want to retain before continuing. Do not discard work to make the pull succeed. For a clean checkout, run the following **one line at a time**, proceeding only when each succeeds:
+
+```powershell
+git switch main
 git pull --ff-only
 pnpm.cmd install --frozen-lockfile
 pnpm.cmd build
+```
+
+Before starting, restore your usual `RIG_HOME`, `RIG_PORT`, proxy, and approved certificate settings in this terminal. If your existing setup requires system CA trust on a supported Node version, restore `$env:NODE_USE_SYSTEM_CA = "1"` as described in [Windows certificate trust](#windows-certificate-trust). Then run:
+
+```powershell
 pnpm.cmd rig serve
 ```
 
-Restore the pnpm PATH line first if this is a new terminal. Rebuilding makes the built browser UI match the updated source. Then reload port 7777. To continue using Vite instead, start `pnpm.cmd dev:web` in the second terminal and open its Local URL.
+Rebuilding makes the built browser UI match the updated source. Leave the runtime running and reload port 7777 (or your configured port). To continue using Vite instead, start `pnpm.cmd dev:web` in a second terminal and open its Local URL. A browser refresh alone does not restart the runtime.
+
+Keep the same Windows account and `RIG_HOME` (default `~/.rig`) to retain saved agents, connections, model settings, history, and access to keys. Do not delete your data directory when updating. For an optional backup, stop Rig and copy the complete data directory, including SQLite sidecars; credentials in Windows Credential Manager are stored separately.
+
+If `git pull --ff-only` reports divergent branches or local changes, stop and resolve the Git state instead of using `reset --hard`. Only pushed changes merged into `main` arrive through this sequence; an open PR or local-only change will not. Use `git rev-parse --short HEAD` to report your revision. If the UI is stale, confirm a successful build, restart the runtime, and hard-refresh the browser.
 
 To check a restarted runtime, run `pnpm.cmd rig doctor` from another terminal with the same repository and environment settings.
 
@@ -394,6 +415,8 @@ Get-NetTCPConnection -LocalPort 7777 -State Listen |
 Identify the owning process before deciding how to stop it. Closing a browser tab or restarting Vite does not release the runtime's port.
 
 ## Sharing results and optional developer tests
+
+For Claude models exposed through APIM, follow [Testing the Anthropic SDK through APIM](testing-anthropic-sdk.md) after starting Rig. It includes the exact connection/model fields, test-agent settings, and a live tool-call checklist. Apply any approved certificate settings in the runtime terminal before startup, as described above.
 
 For structured diagnostics:
 

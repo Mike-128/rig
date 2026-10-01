@@ -6,8 +6,13 @@ import { webFetchTool } from "./builtin/web_fetch";
 import { loadSkillTool, skillListTool, skillWriteTool } from "./builtin/skills";
 import { agentListTool, agentReadTool, agentWriteTool, modelListTool } from "./builtin/agents";
 import type { ToolSpec } from "./types";
+import { knowledgeReadTool, knowledgeSearchTool, memoryReadTool, memoryWriteTool } from "./builtin/knowledge";
 
 export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolSpec> = {
+  knowledge_read: knowledgeReadTool,
+  knowledge_search: knowledgeSearchTool,
+  memory_read: memoryReadTool,
+  memory_write: memoryWriteTool,
   file_read: fileReadTool,
   file_write: fileWriteTool,
   web_fetch: webFetchTool,
