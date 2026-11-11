@@ -50,8 +50,8 @@ export function ConnectionSettings({ connection, onSaved, onClose }: { connectio
       setNotice(kind === "headers" ? "Headers saved. Previous probe results cleared; probe again." : kind === "reset" ? "Profile defaults restored. Reopen settings to view them." : "Discovery saved. Use Scan inventory to list and probe.");
     } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
   }
-  return <div className="card"><h3>Connection settings</h3>
-    {error && <div className="issue error">{error}</div>}{notice && <div className="issue">{notice}</div>}
+  return <div className="subsection"><h4>Connection settings</h4>
+    {error && <div className="issue error">{error}</div>}{notice && <div className="issue ok">{notice}</div>}
     <HeaderFields rows={rows} onChange={setRows} /><button disabled={busy} onClick={() => save("headers")}>Save headers</button>
     <h4>Model discovery</h4><p className="muted">Use the listing path supplied by your gateway administrator and select its response format. One configuration covers one inference dialect. Deployment inventories import successful OpenAI deployments explicitly marked as chat-capable; access/entitlement lists alone may not contain routing information.</p>
     <label className="field"><span>Listing response format</span><select value={spec.responseFormat} onChange={(e) => setSpec({ ...spec, responseFormat: e.target.value, dialect: e.target.value === "azure-deployments" ? "openai.chat" : spec.dialect })}><option value="provider">Provider model list</option><option value="azure-deployments">Azure deployment inventory</option></select></label>

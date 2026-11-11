@@ -4,3 +4,5 @@ packages:
 allowBuilds:
   esbuild: true
   "@napi-rs/keyring": true
+  # Electron downloads its binary in a postinstall step.
+  electron: true

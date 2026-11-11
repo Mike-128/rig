@@ -9,7 +9,7 @@ An agent can read reference material from folders on the machine running Rig, in
 3. Enter a unique source name such as `reference`, an absolute folder path, and a description telling the agent what it contains.
 4. Click **Check folder** to confirm that the runtime can list it. This does not contact a model.
 5. Save the agent. Knowledge read/search tools are enabled automatically when you attach folders through the editor.
-6. Start a **new chat** with that agent. Existing sessions retain their saved agent version.
+6. Start a **new session** with that agent. Existing sessions retain their saved agent version.
 
 Examples of paths:
 
@@ -45,7 +45,7 @@ Files are read from the store each time, so new tool reads see current contents.
 
 Enable **persistent notes** to let the agent read its own notes from previous sessions. Optionally enable **Allow note updates, with approval** under sandbox 1. The model calls `memory_write`; Rig shows the proposed replacement text and pauses for approval before saving it. Rejecting approval leaves the notes unchanged.
 
-Notes are separate from source folders and stored in the local SQLite `agent_memory` table under the agent's slug. They survive restarts and are shared across sessions and versions of that agent. They are not automatically loaded as instructions: the agent uses `memory_read` when useful. Notes have a 24,000-character limit and should contain concise findings and source citations, never credentials.
+Notes are separate from source folders and stored in the local SQLite `agent_memory` table under the agent's slug. They are the agent's notebook, one of three memory scopes: `memory_read` with no name reads the notebook, while a `name` reads one of the user's personal or team memories (see the README's Memory section). Turning notes off keeps the memory tools for those other scopes. They survive restarts and are shared across sessions and versions of that agent. They are not automatically loaded as instructions: the agent uses `memory_read` when useful. Notes have a 24,000-character limit and should contain concise findings and source citations, never credentials.
 
 Updates require the exact previously read text so a stale session cannot overwrite a concurrent update. On conflict, read the latest notes and merge the changes. Disabling memory preserves notes; deleting the agent deletes its notes. Agent YAML export includes the memory setting, not the note contents. Ordinary chat history remains separately stored.
 

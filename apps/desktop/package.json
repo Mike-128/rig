@@ -1,0 +1,19 @@
+{
+  "name": "@rig/desktop",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "electron:install": "node node_modules/electron/install.js",
+    "start": "pnpm run electron:install && pnpm --filter @rig/web build && tsc -p tsconfig.json && electron .",
+    "dev": "tsc -p tsconfig.json && electron .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "echo \"no desktop tests\""
+  },
+  "devDependencies": {
+    "electron": "^45.2.3"
+  }
+}

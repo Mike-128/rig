@@ -1,4 +1,5 @@
 import type { Skill, SkillSummary } from "../skills/types";
+import type { Memory, MemoryInput, MemoryScope, MemorySummary } from "../memory/types";
 
 export interface HostAgentSummary {
   slug: string;
@@ -33,8 +34,9 @@ export interface HostWriteResult {
 export interface HostServices {
   readKnowledge?(source: string, file: string, offset: number, signal: AbortSignal): Promise<string>;
   searchKnowledge?(source: string, query: string, signal: AbortSignal): Promise<string>;
-  readMemory?(): Promise<string>;
-  writeMemory?(content: string, expectedContent: string): Promise<string>;
+  /** This agent's own notebook (agent definitions with memory: true), replaced whole with an optimistic check. */
+  readNotes?(): Promise<string>;
+  writeNotes?(content: string, expectedContent: string): Promise<string>;
   listAgents(): HostAgentSummary[];
   readAgentYaml(slug: string): string | undefined;
   writeAgent(definition: unknown): HostWriteResult;
@@ -43,4 +45,9 @@ export interface HostServices {
   readSkill(name: string): Skill | undefined;
   readSkillFile(name: string, file: string): string | undefined;
   writeSkill(name: string, description: string, body: string): { ok: boolean; error?: string; hash?: string };
+  /** Personal and team memories. Optional so hosts without memory still satisfy the interface. */
+  listMemories?(): MemorySummary[];
+  readMemory?(name: string, scope?: MemoryScope): Memory | undefined;
+  /** Personal writes apply at once; team writes are staged for a reviewed pull request. */
+  writeMemory?(scope: MemoryScope, change: MemoryInput | { name: string; delete: true }): Promise<{ ok: boolean; error?: string; message?: string }>;
 }

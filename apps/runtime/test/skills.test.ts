@@ -112,7 +112,7 @@ describe("skills", () => {
     expect(skills.every((s) => s.source === "bundled" && s.hash.length === 12)).toBe(true);
 
     const agents = await api<{ slug: string }[]>("/agents");
-    expect(agents.map((a) => a.slug).sort()).toEqual(["agent-builder", "assistant"]);
+    expect(agents.map((a) => a.slug).sort()).toEqual(["agent-builder", "assistant", "coder"]);
     const builder = await api<{ skills: string[]; tools: string[]; approvals: string[] }>("/agents/agent-builder");
     expect(builder.skills.sort()).toEqual(["agent-design", "skill-authoring"]);
     expect(builder.tools).toContain("agent_write");
@@ -158,7 +158,8 @@ describe("skills", () => {
 
     // The first request advertised the skill by name and description, not its body.
     const first = upstream.requests.slice(requestOffset).filter((r) => r.path === "/v1/messages")[0]!;
-    const system = String((first.body as { system?: string }).system ?? "");
+    // The system prompt goes out as a cached text block.
+    const system = JSON.stringify((first.body as { system?: unknown }).system ?? "");
     expect(system).toContain("Available skills");
     expect(system).toContain("agent-design");
     expect(system).not.toContain("Granting `shell` when `file_read` would do");

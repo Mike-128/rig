@@ -10,11 +10,30 @@ export interface Skill {
   body: string;
   /** Short content hash of SKILL.md, so a shared agent can be told the skill differs. */
   hash: string;
-  source: "bundled" | "user";
+  /**
+   * Where it was found. Precedence on a name clash: project > user > team > claude > bundled.
+   * - project: the workspace's .rig/skills or .claude/skills
+   * - user:    ~/.rig/skills (including skills installed from GitHub)
+   * - team:    skills/ in the team repo, changed through reviewed pull requests
+   * - claude:  ~/.claude/skills, so skills set up for Claude Code work here too
+   * - bundled: shipped with Rig
+   */
+  source: "bundled" | "user" | "team" | "claude" | "project";
+  /** Set for skills installed from GitHub, so they can be updated from the same place. */
+  origin?: SkillOrigin;
   /** Absolute directory holding SKILL.md. */
   dir: string;
   /** Resource files beside SKILL.md, relative to `dir`. */
   files: string[];
+}
+
+export interface SkillOrigin {
+  repo: string;
+  ref: string;
+  path: string;
+  /** Commit the files were taken from. */
+  sha?: string;
+  installedAt: string;
 }
 
 /** What sits in context by default: enough for the model to decide whether to load the skill. */

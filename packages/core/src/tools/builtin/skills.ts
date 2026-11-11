@@ -26,7 +26,7 @@ export const loadSkillTool: ToolSpec = {
     const { name, file } = (input ?? {}) as { name?: string; file?: string };
     if (typeof name !== "string") return { output: "name is required", isError: true };
     if (!ctx.host) return { output: "Skills are unavailable in this run", isError: true };
-    if (ctx.enabledSkills && !ctx.enabledSkills.includes(name)) {
+    if (ctx.enabledSkills && !ctx.enabledSkills.includes("*") && !ctx.enabledSkills.includes(name)) {
       return { output: `Skill "${name}" is not enabled for this agent. Enabled: ${ctx.enabledSkills.join(", ") || "none"}`, isError: true };
     }
     const skill = ctx.host.readSkill(name);
@@ -39,7 +39,7 @@ export const loadSkillTool: ToolSpec = {
     }
 
     const resources = skill.files.length
-      ? `\n\n---\nResource files bundled with this skill (read one by calling load_skill again with the file argument):\n${skill.files.map((f) => `- ${f}`).join("\n")}`
+      ? `\n\n---\nThis skill's folder is ${skill.dir}. Resource files bundled with it (read one by calling load_skill again with the file argument; run its scripts with the shell tool using the full path):\n${skill.files.map((f) => `- ${f}`).join("\n")}`
       : "";
     return { output: `# Skill: ${skill.name}\n${skill.description}\n\n${skill.body}${resources}` };
   },

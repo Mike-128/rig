@@ -4,7 +4,7 @@ Status: draft for review. Sections 14.1 to 14.3 are implemented in this repo, pl
 conversational agent creation via rig-management tools, which arrived earlier than the phase table predicted.
 Date: 2026-09-02
 Changes since v0.5: added section 14, the first build slice, with a definition of done covering model probing plus creating, saving, running, and replaying a user-designed agent on both dialects.
-Changes since v0.4: two entry points (Chat and Workbench) on one runtime, with chat-to-agent escalation through detached tasks (section 8); Session kinds and task events added; clients (web, CLI/TUI, IDE later) defined; phases, decisions, and questions updated.
+Changes since v0.4: two entry points (Chat and the project view) on one runtime, with chat-to-agent escalation through detached tasks (section 8); Session kinds and task events added; clients (web, CLI/TUI, IDE later) defined; phases, decisions, and questions updated.
 Changes since v0.3: added multi-agent capabilities (6.8 to 6.12): sub-agents, parallel execution and scheduling, orchestration patterns and workflows, handoffs, and skills; Agent Definition, Run, and event model extended; phases, decisions, and questions updated.
 Changes since v0.2: control plane scoped to observability and kill switch only (not an operator surface); keys are runtime-only, firmly; added the local gateway proxy (6.3) and the "what a user needs for a virtual key" spec (6.2); phases, decisions, and questions updated.
 Changes since v0.1: split into a local runtime and an enterprise control plane; Claude Agent SDK and OpenAI Agents SDK promoted to first-class runtime engines; gateway discovery changed to a curated route catalog plus entitlement probing; governance (kill switch), telemetry, and the tool-execution recommendation added.
@@ -18,7 +18,7 @@ Changes since v0.1: split into a local runtime and an enterprise control plane; 
 - Runs locally on the user's machine, so agents can work with local files, tools, and networks.
 - An enterprise control plane observes every runtime and can stop it: a single telemetry sink plus a true kill switch. It is not an operator surface; day-to-day execution and agent management happen in the local runtime.
 - A friendly UI to manage provisioned models, chat with them, and build and operate agents.
-- Two entry points on the same runtime: a basic chat interface for everyday use, and a dev/coding/agent workbench with the full tool surface. A chat can escalate work to a fully enabled agent and get the result back.
+- Two entry points on the same runtime: a basic chat interface for everyday use, and a dev/coding/agent project view with the full tool surface. A chat can escalate work to a fully enabled agent and get the result back.
 
 ## 2. Non-goals (for now)
 
@@ -98,7 +98,7 @@ The UI is a web app in both cases. The local runtime serves it on localhost; the
 | **Skill** | A folder with `SKILL.md` (name, description, instructions) plus optional scripts and resources, following the Agent Skills format | id, name, description, source (local dir / git / bundled), contentHash, version |
 | **Workflow Definition** | A declarative graph of steps (agents, tools, human gates) with fan-out and fan-in | id, version, steps, edges, inputs, triggers |
 | **Tool Source** | Where tools come from | MCP server (stdio / HTTP), built-in pack, HTTP function |
-| **Session** | A conversation thread; the container for a run tree | id, kind (`chat` / `workbench` / `task`), agentId + version, userId, deviceId, state, workspace (optional for chat, required for workbench and task), linkedFrom (the session and message that spawned a task) |
+| **Session** | A conversation thread; the container for a run tree | id, kind (`chat` / `project` / `task`), agentId + version, userId, deviceId, state, workspace (optional for chat, required for project and task), linkedFrom (the session and message that spawned a task) |
 | **Run** | One execution of an engine. Root runs come from user turns or workflow steps; child runs from delegation | id, sessionId, rootRunId, parentRunId, depth, role (`root` / `subagent` / `step`), engine, status, budgets (own and rolled-up), startedAt, endedAt |
 | **Event** | Append-only record of everything in a run | runId, seq, type, payload, ts |
 | **Policy** | Rules the runtime enforces. Authored locally; enrolled runtimes may additionally receive guardrail floors from the control plane | scope (local / agent; optionally org floor), rules (tool allow/deny, approval requirements, sandbox level, budgets, model allowlist, telemetry redaction, fail mode) |
@@ -467,7 +467,7 @@ Disabling a connection in the rig is a local block; true revocation is done at A
 
 ### 8.1 Two entry points, one runtime
 
-| | **Chat** | **Workbench** (dev / coding / agent tool) |
+| | **Chat** | **Project view** (dev / coding / agent tool) |
 |---|---|---|
 | Purpose | Everyday conversation, questions, drafting, quick lookups | Building software, running agents against a project, operating workflows |
 | Default definition | `assistant`: native engine, `fast` or `smart` alias, tools limited to web fetch, file read from an attachments area, skills, and `start_task` | `coder`: Claude Agent SDK engine on Anthropic-dialect models, native engine otherwise; full tool surface (files, shell, MCP, sub-agents, skills) |
@@ -477,7 +477,7 @@ Disabling a connection in the rig is a local block; true revocation is done at A
 | Presentation | Message thread with task cards | Run console: trace, tree lanes, diffs, terminal output, approvals |
 | Any definition allowed? | Yes, the user can switch the chat to any agent in the library; the surface only sets defaults and presentation | Yes |
 
-Both surfaces are views over the same runtime, scheduler, policy engine, and event log. A session's `kind` decides which surface opens it by default, and any session can be opened in the workbench for full detail.
+Both surfaces are views over the same runtime, scheduler, policy engine, and event log. A session's `kind` decides which surface opens it by default, and any session can be opened in the project view for full detail.
 
 ### 8.2 Escalation: chat hands work to an agent
 
@@ -486,25 +486,25 @@ The chat definition has one special tool, `start_task`, and the model or the use
 1. **Brief.** The runtime drafts a structured brief from the conversation: goal, constraints, acceptance criteria, relevant excerpts, files mentioned. The whole chat is not dumped into the agent. The user sees the brief, edits it, picks the workspace (a recent project or a new folder) and the target definition (default `coder`), and confirms. Confirmation is the governance gate for escalation and is on by default; policy can require it always or allow auto-start for specific definitions.
 2. **Detached run.** A new Session of kind `task` is created, linked back to the chat session and the originating message. Its root Run goes through the scheduler like any other and executes in the background while the user keeps chatting.
 3. **Progress back to chat.** The chat session receives `task_started`, `task_progress` (milestones and approval requests, not every token), and `task_completed` or `task_failed` events, rendered as a task card that updates in place. Approval requests from the task can be answered from the card.
-4. **Result.** On completion, a summary plus artifacts (a diff, files, links) return to the chat as a tool result, so the conversation can continue with the outcome in context. "Open in workbench" on the card jumps to the full run console for that task.
+4. **Result.** On completion, a summary plus artifacts (a diff, files, links) return to the chat as a tool result, so the conversation can continue with the outcome in context. "Open in project view" on the card jumps to the full run console for that task.
 5. **Follow-ups.** Replying to a task card sends a new turn into the task session rather than starting over, so iteration happens on the same workspace and context.
 
 Differences from a sub-agent: a task is a root run in its own session, it outlives the chat turn that started it, it has its own workspace and approvals, and it reports back by events rather than a blocking tool return. It shares all the plumbing: budgets, halts (halting the chat session does not halt its tasks; halting the task session does), and telemetry with the link recorded.
 
-The reverse direction also exists: an agent in the workbench can `notify_chat` with a question or a result, which appears as a message in the linked chat. This is how a long-running task asks for a decision without the user watching the console.
+The reverse direction also exists: an agent in the project view can `notify_chat` with a question or a result, which appears as a message in the linked chat. This is how a long-running task asks for a decision without the user watching the console.
 
 ### 8.3 Clients
 
 All clients talk to the local runtime's API. None of them embed engines or keys.
 
-- **Web UI** served on localhost: Chat and Workbench plus the catalog, library, and settings surfaces below. Optional Tauri desktop shell for tray presence and auto-start.
-- **CLI / TUI**: `rig chat` (terminal chat), `rig code` (terminal-first workbench in the style of Claude Code, attached to the current directory), `rig run <agent> "<input>"` for scripting, `rig tasks` to list and follow background tasks. The TUI is the natural home for the coding workflow and for users who live in the terminal.
-- **IDE extension** (later): opens workbench sessions against the editor's workspace, surfaces diffs and approvals inline.
+- **Web UI** served on localhost: Chat and the project view plus the catalog, library, and settings surfaces below. Optional Tauri desktop shell for tray presence and auto-start.
+- **CLI / TUI**: `rig chat` (terminal chat), `rig code` (terminal-first coding view in the style of Claude Code, attached to the current directory), `rig run <agent> "<input>"` for scripting, `rig tasks` to list and follow background tasks. The TUI is the natural home for the coding workflow and for users who live in the terminal.
+- **IDE extension** (later): opens project sessions against the editor's workspace, surfaces diffs and approvals inline.
 
 ### 8.4 Local UI surfaces
 
-1. **Chat**: message thread, model and agent switcher, attachments, task cards with progress and approvals, "open in workbench".
-2. **Workbench**: project picker, run console with trace and tree lanes, diff viewer, terminal output, approval inbox, agent switcher, task list across projects.
+1. **Chat**: message thread, model and agent switcher, attachments, task cards with progress and approvals, "open in project view".
+2. **Project view**: project picker, run console with trace and tree lanes, diff viewer, terminal output, approval inbox, agent switcher, task list across projects.
 3. **Model Catalog**: add a connection, paste key, run the entitlement probe, review models with capability and entitlement badges, test, set aliases.
 4. **Playground**: side-by-side compare of models on one prompt, capability-driven parameter panel, live token and cost meter, "save as agent". Lives inside Chat as a compare mode rather than a separate app.
 5. **Agent Builder**: instructions, model binding (alias with fallbacks or explicit), engine selection with validation, tool sources with per-tool approval toggles, skills picker, sub-agent and handoff declarations, delegation limits, sandbox level, policies, which surfaces the definition is offered on, versioning with diff, test panel, export/import of agent definitions for sharing between people.
@@ -544,7 +544,7 @@ Why TypeScript: both vendor SDKs, both vendor agent SDKs, and the MCP SDK are fi
 |---|---|---|
 | **0. Spike** | Prove the chain and the engine strategy | Canonical types; `anthropic.messages` and `openai.chat` adapters; minimal local gateway proxy; CLI chat through a real APIM virtual key with a gateway profile. Claude Agent SDK pointed at the proxy: verify beta-header passthrough and SSE not buffered. Confirm whether Entra JWT is required alongside the key. |
 | **1. Local catalog + chat** | A user can register keys and talk to their models | Local runtime with SQLite and keychain, gateway profiles and route catalog, entitlement probe, Model Catalog UI, Chat entry point with streaming and compare mode, `rig chat` CLI, local usage metering. Standalone mode only. |
-| **2. Agents + workbench** | A user can build and run agents locally, and escalate from chat | Agent Definition and engine contract; native engine; Claude Agent SDK engine; OpenAI Agents engine; MCP host and built-in packs; sandbox levels 0 to 2; local policy engine; scheduler with concurrency limits and per-connection backoff; Workbench entry point and `rig code` TUI; `start_task` escalation with brief, task cards, and `notify_chat`; Agent Builder with export/import; Run Console with trace and approvals. |
+| **2. Agents + project view** | A user can build and run agents locally, and escalate from chat | Agent Definition and engine contract; native engine; Claude Agent SDK engine; OpenAI Agents engine; MCP host and built-in packs; sandbox levels 0 to 2; local policy engine; scheduler with concurrency limits and per-connection backoff; project view entry point and `rig code` TUI; `start_task` escalation with brief, task cards, and `notify_chat`; Agent Builder with export/import; Run Console with trace and approvals. |
 | **2b. Multi-agent and skills** | Teams of agents and reusable capability | Run tree and delegation tools (`spawn_agent`, `spawn_parallel`, `await_agents`, `cancel_agent`); declared sub-agents with inheritance rules; isolated workspaces; handoffs; skills with progressive disclosure on all three engines; skill library and import; run tree UI with lanes and roll-ups; orchestration agent templates. |
 | **3. Control plane** | Enterprise observability and kill switch | Enrollment and SSO; control channel with lease and fail modes; kill switch at all scopes with subtree cascade, backstopped by the proxy; telemetry ingest and OTel export; fleet console and dashboards; audit. Optional guardrail floors, catalog distribution, and skill source allowlist. |
 | **3b. Workflows** | Declarative orchestration | Workflow DSL and runner (agent, tool, parallel, condition, human, loop steps); event-sourced workflow state with pause and resume; triggers (manual, schedule, webhook, file watch); visual editor; blackboard. |
@@ -580,7 +580,7 @@ Why TypeScript: both vendor SDKs, both vendor agent SDKs, and the MCP SDK are fi
 9. Should workflows (level 3 orchestration) land before the control plane, or after? The doc orders them after, on the assumption that governance of single agents matters sooner than declarative pipelines.
 10. Is there an existing skill catalog or repo convention in the org the rig should import from on day one?
 11. Are scheduled and webhook-triggered workflows expected on laptops (which may be asleep), or is that the first reason to add a headless execution host?
-12. Is the coding workbench terminal-first (the TUI is primary, the web view secondary) or GUI-first? The doc builds both on the same API but the first one to polish is a product call.
+12. Is the coding view terminal-first (the TUI is primary, the web view secondary) or GUI-first? The doc builds both on the same API but the first one to polish is a product call.
 13. Should escalation from chat default to confirming the brief every time, or auto-start for a trusted `coder` definition once the user has opted in?
 14. Which IDE matters first for the extension, if any (VS Code assumed)?
 
@@ -608,7 +608,7 @@ Both dialects must pass steps 1 and 4: one agent on an Anthropic-dialect model a
 
 ### 14.3 Out of scope for v1
 
-Vendor engines, sub-agents and parallel spawning, skills, handoffs, workflows, the Workbench surface and TUI, escalation tasks, the control plane, telemetry export, desktop shell, `openai.responses` and `azure.openai` adapters (unless the APIM profile needs one of them on day one).
+Vendor engines, sub-agents and parallel spawning, skills, handoffs, workflows, the project view and TUI, escalation tasks, the control plane, telemetry export, desktop shell, `openai.responses` and `azure.openai` adapters (unless the APIM profile needs one of them on day one).
 
 ### 14.4 Build assumptions
 

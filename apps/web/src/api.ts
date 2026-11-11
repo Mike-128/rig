@@ -39,6 +39,8 @@ const EVENT_TYPES = [
   "text_delta",
   "reasoning_delta",
   "tool_use_start",
+  "tool_progress",
+  "compacted",
   "assistant_message",
   "tool_call",
   "approval_requested",

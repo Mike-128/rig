@@ -2,18 +2,25 @@ import { useEffect, useState } from "react";
 import type { AgentSummary, Model, ModelAlias, SkillSummary } from "@rig/core/types";
 import { MANAGEMENT_TOOLS, slugify, type AgentDefinitionInput, type ValidationIssue } from "@rig/core/agent";
 import { api } from "../api";
+import type { McpServerStatus } from "./Mcp";
 
 type ModelRow = Model & { connectionName: string };
 
-const WORKSPACE_TOOLS = ["file_read", "file_write", "web_fetch", "shell", "load_skill", "knowledge_read", "knowledge_search", "memory_read", "memory_write"] as const;
+const WORKSPACE_TOOLS = ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill", "knowledge_read", "knowledge_search", "memory_read", "memory_write"] as const;
 
 const TOOL_HELP: Record<string, string> = {
   knowledge_read: "Browse and read only the configured knowledge folders.",
   knowledge_search: "Search nested knowledge files for literal text; read-only and bounded.",
-  memory_read: "Read this agent's persistent notes from previous sessions.",
-  memory_write: "Update separate persistent notes. Requires approval and sandbox 1.",
-  file_read: "Read files and list directories inside the workspace. Read-only.",
+  memory_read: "Read memory from earlier sessions: personal and team memories, and this agent's notebook when persistent notes are on. Read-only.",
+  memory_write: "Save memory for future sessions, always with approval: personal at once, team through a pull request, or this agent's notebook. Needs sandbox 1.",
+  file_read: "Read files (with line numbers and ranges) and list directories inside the workspace. Read-only.",
+  glob: "Find files by name pattern. Read-only.",
+  grep: "Search file contents with a regular expression. Read-only.",
+  file_edit: "Edit files by exact string replacement. Needs sandbox 1.",
   file_write: "Create or overwrite files inside the workspace. Needs sandbox 1.",
+  todo_write: "Keep a visible task list for multi-step work.",
+  task: "Delegate work to sub-agents with their own context, in parallel if needed.",
+  "mcp__*": "Every tool from every connected MCP server. Tools that are not read-only ask for approval.",
   web_fetch: "Fetch a public http(s) URL as text. Read-only.",
   shell: "Run a command in the workspace directory. Needs sandbox 1; the widest capability here.",
   load_skill: "Read the full instructions for an attached skill. Added automatically when you attach one.",
@@ -192,7 +199,36 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
     return res.ok;
   }
 
+  const current = agents.find((a) => a.slug === editing);
+  const isTeam = current?.source === "team";
+
+  /** A team agent is changed by proposing it: the edit becomes a pull request, nothing changes locally. */
+  async function proposeToTeam() {
+    if (!editing) return;
+    setMsg(null);
+    try {
+      const res = await api<{ ok: boolean; issues: ValidationIssue[] }>(`/team/agents/${editing}`, { method: "PUT", json: toInput(form) });
+      setIssues(res.issues);
+      setMsg("Proposed to the team. Open the pull request in Settings, Team and GitHub.");
+    } catch (e) {
+      const err = e as { body?: { issues?: ValidationIssue[] }; message: string };
+      setIssues(err.body?.issues ?? [{ path: "", message: err.message, severity: "error" }]);
+    }
+  }
+
+  async function share() {
+    if (!editing) return;
+    setMsg(null);
+    try {
+      const r = await api<{ staged: { kind: string; name: string }[] }>("/team/share", { method: "POST", json: { kind: "agent", name: editing } });
+      setMsg(`Queued for the team: ${r.staged.map((s) => `${s.kind} ${s.name}`).join(", ")}. Open the pull request in Settings, Team and GitHub.`);
+    } catch (e) {
+      setIssues([{ path: "", message: (e as Error).message, severity: "error" }]);
+    }
+  }
+
   async function save() {
+    if (isTeam) return proposeToTeam();
     setMsg(null);
     const slug = form.slug || slugify(form.name);
     const body = { ...toInput(form), slug };
@@ -243,8 +279,19 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
   async function runIt() {
     if (!editing) return;
     const s = await api<{ id: string }>("/sessions", { method: "POST", json: { agent: editing } });
-    location.hash = `#/chat/${s.id}`;
+    location.hash = `#/s/${s.id}`;
   }
+
+  const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
+  const [teamConnected, setTeamConnected] = useState(false);
+  useEffect(() => {
+    api<{ servers: McpServerStatus[] }>("/mcp")
+      .then((r) => setMcpServers(r.servers))
+      .catch(() => {});
+    api<{ config?: unknown }>("/team")
+      .then((t) => setTeamConnected(Boolean(t.config)))
+      .catch(() => {});
+  }, []);
 
   const toggle = (list: "tools" | "approvals" | "skills", name: string) =>
     set(list, form[list].includes(name) ? form[list].filter((t) => t !== name) : [...form[list], name]);
@@ -276,7 +323,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
           style={{ width: "100%", marginBottom: 12 }}
           onClick={async () => {
             const s = await api<{ id: string }>("/sessions", { method: "POST", json: { agent: "agent-builder" } });
-            location.hash = `#/chat/${s.id}`;
+            location.hash = `#/s/${s.id}`;
           }}
         >
           Or describe one in chat
@@ -284,9 +331,12 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
         <h3>Library</h3>
         {agents.map((a) => (
           <a key={a.slug} className={`list-item ${a.slug === editing ? "active" : ""}`} href={`#/agents/${a.slug}`} onClick={() => setEditing(a.slug)}>
-            <div>{a.name}</div>
+            <div>
+              {a.name} {a.source === "team" && <span className="badge">team</span>}
+              {a.inTeam && <span className="badge" title="Your local copy shadows the team's version">yours, in team</span>}
+            </div>
             <div className="sub">
-              {a.slug} · v{a.version}
+              {a.slug}, v{a.version}
             </div>
           </a>
         ))}
@@ -306,21 +356,38 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
               {editing && (
                 <>
                   <button onClick={runIt}>Run in chat</button>
+                  {!isTeam && teamConnected && (
+                    <button onClick={share} title="Propose this agent to the team through a pull request">
+                      {current?.inTeam ? "Propose update to team" : "Share with team"}
+                    </button>
+                  )}
                   <a className="btn" href={`/api/agents/${editing}/export`} download={`${editing}.yaml`}>
                     Export
                   </a>
-                  <button className="danger" onClick={remove}>
-                    Delete
-                  </button>
+                  {isTeam ? (
+                    <button
+                      className="danger"
+                      onClick={async () => {
+                        await api("/team/remove", { method: "POST", json: { kind: "agent", name: editing } });
+                        setMsg("Proposed removing this agent from the team. Open the pull request in Settings, Team and GitHub.");
+                      }}
+                    >
+                      Propose removal
+                    </button>
+                  ) : (
+                    <button className="danger" onClick={remove}>
+                      Delete
+                    </button>
+                  )}
                 </>
               )}
               <button onClick={validate}>Validate</button>
-              <button className="primary" onClick={save} disabled={!form.name.trim() || !form.instructions.trim()}>
-                Save
+              <button className="primary" onClick={save} disabled={!form.name.trim() || !form.instructions.trim()} title={isTeam ? "Team agents change through a reviewed pull request" : undefined}>
+                {isTeam ? "Propose change" : "Save"}
               </button>
             </div>
           </div>
-          {msg && <div className="issue" style={{ color: "var(--ok)" }}>{msg}</div>}
+          {msg && <div className="issue ok">{msg}</div>}
           {issues.map((i, n) => (
             <div key={n} className={`issue ${i.severity}`}>
               {i.severity}: {i.path ? `${i.path}: ` : ""}
@@ -432,7 +499,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
             <p className="muted">Attach local folders, mounted drives or UNC shares accessible to the machine running Rig. The agent browses the nested structure and retrieves relevant UTF-8 text on demand. Source files stay read-only; retrieved excerpts are sent to the agent's configured model and saved in chat history.</p>
             <p className="muted">Supports text, Markdown, code and text data files up to 1 MiB each. Export PDF and Office files to text first. Network access uses the runtime's Windows account; no administrator mode is needed.</p>
             {form.knowledge.map((source, index) => (
-              <div className="card" key={index}>
+              <div className="subsection" key={index}>
                 <label className="field"><span>Source name</span><input value={source.name} placeholder="reference" onChange={(e) => { setFolderCheck(""); set("knowledge", form.knowledge.map((s, i) => i === index ? { ...s, name: e.target.value } : s)); }} /></label>
                 <label className="field"><span>Absolute folder path on the runtime machine</span><input value={source.path} placeholder={"C:\\Knowledge or \\\\server\\share\\Knowledge"} onChange={(e) => { setFolderCheck(""); set("knowledge", form.knowledge.map((s, i) => i === index ? { ...s, path: e.target.value } : s)); }} /></label>
                 <label className="field"><span>Description for the agent</span><input value={source.description} placeholder="Product manuals and reference notes" onChange={(e) => set("knowledge", form.knowledge.map((s, i) => i === index ? { ...s, description: e.target.value } : s))} /></label>
@@ -442,14 +509,24 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
             ))}
             <button disabled={form.knowledge.length >= 10} onClick={() => set("knowledge", [...form.knowledge, { name: "", path: "", description: "" }])}>Add knowledge folder</button>
             {folderCheck && <pre style={{ maxHeight: 220, overflow: "auto", whiteSpace: "pre-wrap" }}>{folderCheck}</pre>}
-            <p className="muted">Save to attach folders; knowledge tools are enabled automatically. Start a new chat after changing an agent: existing sessions keep their saved agent version. A folder check lists names locally and does not call a model.</p>
-            <label className="field"><span><input type="checkbox" checked={form.memory} onChange={(e) => setForm((f) => ({ ...f, memory: e.target.checked, tools: e.target.checked ? [...new Set([...f.tools, "memory_read"])] : f.tools.filter((t) => !t.startsWith("memory_")), approvals: e.target.checked ? f.approvals : f.approvals.filter((t) => !t.startsWith("memory_")) }))} /> Enable persistent notes for this agent</span></label>
+            <p className="muted">Save to attach folders; knowledge tools are enabled automatically. Start a new session after changing an agent: existing sessions keep their saved agent version. A folder check lists names locally and does not call a model.</p>
+            <label className="field"><span><input type="checkbox" checked={form.memory} onChange={(e) => setForm((f) => ({ ...f, memory: e.target.checked, tools: e.target.checked ? [...new Set([...f.tools, "memory_read"])] : f.tools }))} /> Enable persistent notes for this agent</span></label>
             {form.memory && <label className="field"><span><input type="checkbox" disabled={form.sandbox === 0} checked={form.tools.includes("memory_write")} onChange={(e) => setForm((f) => ({ ...f, tools: e.target.checked ? [...new Set([...f.tools, "memory_write"])] : f.tools.filter((t) => t !== "memory_write"), approvals: e.target.checked ? [...new Set([...f.approvals, "memory_write"])] : f.approvals.filter((t) => t !== "memory_write") }))} /> Allow note updates, with approval (sandbox 1)</span></label>}
-            <p className="muted">Notes live separately in Rig's local database and persist across sessions and restarts. Disabling notes retains them; deleting the agent deletes its notes. No automatic whole-folder ingestion or semantic index is created.</p>
+            <p className="muted">Notes live separately in Rig's local database and persist across sessions and restarts. Turning notes off keeps them, and keeps the memory tools for personal and team memory; deleting the agent deletes its notes. No automatic whole-folder ingestion or semantic index is created.</p>
           </div>
 
           <div className="card">
             <h3>Skills</h3>
+            <label className="checks" title="Every skill installed now or later, including Claude Code and project skills">
+              <span>
+                <input
+                  type="checkbox"
+                  checked={form.skills.includes("*")}
+                  onChange={() => setForm((f) => (f.skills.includes("*") ? { ...f, skills: f.skills.filter((s) => s !== "*") } : { ...f, skills: ["*"], tools: f.tools.includes("load_skill") ? f.tools : [...f.tools, "load_skill"] }))}
+                />{" "}
+                All installed skills
+              </span>
+            </label>
             <div className="muted" style={{ marginBottom: 8 }}>
               Only the descriptions sit in the agent's context. It loads the full instructions on demand with load_skill, which is added automatically when you attach one.
             </div>
@@ -480,6 +557,20 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
               </div>
             </div>
             <div className="field">
+              <span className="muted">MCP tools (servers are set up in Settings, MCP servers)</span>
+              <div className="checks">
+                <label title={TOOL_HELP["mcp__*"]}>
+                  <input type="checkbox" checked={form.tools.includes("mcp__*")} onChange={() => toggle("tools", "mcp__*")} /> all servers
+                </label>
+                {mcpServers.map((s) => (
+                  <label key={s.name} title={s.tools.map((t) => t.name).join(", ")}>
+                    <input type="checkbox" checked={form.tools.includes(`mcp__${s.name}__*`)} onChange={() => toggle("tools", `mcp__${s.name}__*`)} /> {s.name}
+                    {s.status !== "connected" && <span className="muted"> ({s.status})</span>}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="field">
               <span className="muted">Rig management tools — let this agent create and revise other agents and skills</span>
               <div className="checks">
                 {MANAGEMENT_TOOLS.map((t) => (
@@ -492,7 +583,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
             <div className="field">
               <span className="muted">Require approval before running</span>
               <div className="checks">
-                {form.tools.map((t) => (
+                {form.tools.filter((t) => !t.endsWith("*")).map((t) => (
                   <label key={t}>
                     <input type="checkbox" checked={form.approvals.includes(t)} onChange={() => toggle("approvals", t)} /> {t}
                   </label>

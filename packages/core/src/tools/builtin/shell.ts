@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import type { ToolSpec } from "../types";
+import { detectShell, shellArgs } from "../shell-detect";
 
 const MAX_OUTPUT = 20_000;
-const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 function killTree(pid: number) {
   if (process.platform === "win32") {
@@ -20,7 +21,7 @@ export const shellTool: ToolSpec = {
   definition: {
     name: "shell",
     description:
-      "Run a shell command in the workspace directory and return stdout and stderr. PowerShell on Windows, bash elsewhere. Commands time out after 60 seconds by default. Output is truncated.",
+      "Run a shell command in the workspace directory and return stdout, stderr, and the exit code. The shell is named in your environment notes (bash, or PowerShell on Windows without Git Bash). Each call starts a fresh shell in the workspace root, so chain dependent steps in one command. Times out after 120 seconds unless timeoutSeconds says otherwise (max 600). Output streams to the user as it runs and is truncated to the last part if long. Prefer file_read, glob, grep, and file_edit over shell equivalents (cat, find, grep, sed).",
     inputSchema: {
       type: "object",
       properties: {
@@ -36,12 +37,11 @@ export const shellTool: ToolSpec = {
   run(input, ctx) {
     const { command, timeoutSeconds } = (input ?? {}) as { command?: string; timeoutSeconds?: number };
     if (typeof command !== "string" || !command.trim()) return Promise.resolve({ output: "command is required", isError: true });
-    const timeoutMs = Math.min(Math.max((timeoutSeconds ?? 60) * 1000, 1000), 600_000) || DEFAULT_TIMEOUT_MS;
+    const timeoutMs = timeoutSeconds ? Math.min(Math.max(timeoutSeconds * 1000, 1000), 600_000) : DEFAULT_TIMEOUT_MS;
     return new Promise((resolve) => {
-      const isWin = process.platform === "win32";
-      const child = isWin
-        ? spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], { cwd: ctx.workspace, windowsHide: true })
-        : spawn("bash", ["-lc", command], { cwd: ctx.workspace, detached: true });
+      const shell = detectShell();
+      // Detached on POSIX so the whole process group can be killed; Windows uses taskkill /T instead.
+      const child = spawn(shell.path, shellArgs(shell, command), { cwd: ctx.workspace, windowsHide: true, detached: process.platform !== "win32" });
       let out = "";
       let err = "";
       let done = false;
@@ -61,8 +61,16 @@ export const shellTool: ToolSpec = {
         if (child.pid) killTree(child.pid);
         finish({ output: truncate(`${out}\n${err}\n[timed out after ${timeoutMs / 1000}s]`), isError: true });
       }, timeoutMs);
-      child.stdout.on("data", (d) => (out += d.toString()));
-      child.stderr.on("data", (d) => (err += d.toString()));
+      child.stdout.on("data", (d) => {
+        const t = d.toString();
+        out += t;
+        ctx.onProgress?.(t);
+      });
+      child.stderr.on("data", (d) => {
+        const t = d.toString();
+        err += t;
+        ctx.onProgress?.(t);
+      });
       child.on("error", (e) => finish({ output: `Failed to start: ${e.message}`, isError: true }));
       child.on("close", (code) => {
         const combined = [out.trimEnd(), err.trim() ? `[stderr]\n${err.trimEnd()}` : ""].filter(Boolean).join("\n");
@@ -72,6 +80,10 @@ export const shellTool: ToolSpec = {
   },
 };
 
+/** Keeps the head and the tail: errors and summaries are usually at the end of build and test output. */
 function truncate(s: string): string {
-  return s.length > MAX_OUTPUT ? s.slice(0, MAX_OUTPUT) + `\n[truncated: ${s.length - MAX_OUTPUT} more characters]` : s;
+  if (s.length <= MAX_OUTPUT) return s;
+  const head = s.slice(0, MAX_OUTPUT / 4);
+  const tail = s.slice(-(MAX_OUTPUT * 3) / 4);
+  return `${head}\n[... ${s.length - MAX_OUTPUT} characters omitted ...]\n${tail}`;
 }

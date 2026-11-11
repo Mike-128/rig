@@ -96,7 +96,7 @@ pnpm.cmd rig serve
 
 **Leave this terminal running.** Wait for Rig to report that it is listening. If startup fails, capture that error first.
 
-Open [Rig locally](http://127.0.0.1:7777). You should see the application with **Chat**, **Agents**, **Skills**, and **Models** navigation. Continue to step 6 to enter your key.
+Open [Rig locally](http://127.0.0.1:7777). You should see the application with **Sessions**, **Agents**, **Skills**, **Memory**, and **Settings** in the navigation. A new install shows *Connect a model first*. Continue to step 6 to enter your key.
 
 Open a second PowerShell terminal and navigate to the same repository root. Restore its PATH and run the connected checks:
 
@@ -129,16 +129,15 @@ If Vite reports `EPERM: operation not permitted, rename` under `apps/web/node_mo
 
 Enter the key in the **Rig browser application**, not on the runtime status page, in chat, or in a source file. Use an approved gateway/provider API key; GitHub sign-in or Copilot access does not supply a key for this standalone runtime.
 
-1. Open **Models** in the navigation. The page heading is **Model Catalog**.
-2. Find **Add a connection**.
-3. Select the matching **Gateway profile**. The form initially selects Google Gemini; change it if your key is for Claude, GPT, or a company gateway. For direct Claude access use the Anthropic profile, for direct GPT access use the OpenAI profile, and for a company gateway use its appropriate profile/template.
-4. Give it a **Connection name**, such as `work-gateway`.
-5. Paste your key into **Key (stored in the OS keychain, never shown again)**. This is a masked password field.
-6. For a company gateway/template, enter the company-provided **Base URL override** and, if needed, **Auth header override**. For a direct provider using the matching profile, leave overrides blank unless instructed otherwise. Confirm the selected destination before submitting your key.
-7. For APIM, first review the custom-endpoint section below. Then click **Add and probe**. This stores the connection and sends provider requests to discover/probe models, which may incur usage. The key field clears after the connection is saved.
-8. In the connection's model table, find the desired model with **entitled** status and click **set as default**. If it already has the **default** badge, no action is needed. Rig may have selected an initial default automatically.
+1. Open **Settings** at the right of the navigation, then **Models**. With no provider yet, the **Add a provider** form is already open; otherwise click **Add a provider**.
+2. **Choose where the models run.** For direct Claude access choose the Anthropic profile, for direct GPT access the OpenAI profile, and for a company gateway its profile or the APIM template. The description under the list says what each one is.
+3. For a template, enter the company-provided **Base URL**.
+4. Paste your key into **Key**. It is a masked field; **Show** reveals it. The hint under it says which header the key is sent in and where it is stored.
+5. Open **Advanced** only if needed: **Name** (filled in for you, for example `apim`), **Header for the key** if your gateway expects the key in a different header, and **Additional request headers**. For a direct provider, leave Advanced alone unless instructed otherwise. Confirm the selected destination before submitting your key.
+6. For APIM, first review the custom-endpoint section below. Then click **Connect and test**. This stores the connection and sends provider requests to discover and test models, which may incur usage. The key field clears after the connection is saved, and a summary says what the test found.
+7. Under **Default model**, choose the model agents should use. Rig picks the first reachable model when there is no default yet. **Reachable** means the provider accepted the key for that model, including a request rejected only for validation, so send a short chat before relying on it.
 
-If no models appear, or the desired Claude/GPT model is missing, confirm the endpoint and supported model IDs/routes with your gateway administrator. A gateway may require a custom profile or **Add model manually**; do not guess routes from the key alone. One gateway key can cover both Claude and GPT if the gateway exposes both; separate direct providers need separate connections.
+If no models appear, or the desired Claude/GPT model is missing, confirm the endpoint and supported model IDs/routes with your gateway administrator. A gateway may require a custom profile or **Add a model by id**; do not guess routes from the key alone. One gateway key can cover both Claude and GPT if the gateway exposes both; separate direct providers need separate connections.
 
 The runtime stores credentials in the OS keychain when available and otherwise reports an encrypted-file fallback at startup and in doctor results. The connection card displays only the key's last four characters. You do not need to paste the key again at each startup; Vite and the built UI use the same storage when connected to the same runtime.
 
@@ -179,7 +178,7 @@ Ask your gateway administrator for a sample request with credentials removed tha
 - The deployment/model identifier and the value sent in the JSON `model` field, if any.
 - Whether each endpoint speaks Anthropic Messages or OpenAI Chat Completions.
 
-For a simple model route, the connection's **Add model manually** form provides **Model id**, **Dialect**, **Route**, **Body model override**, and **Query parameters**. For an API version, enter a JSON object such as `{"api-version":"2024-12-01-preview"}`, using the version supplied by your company. These parameters override matching values included in Route. Extra authentication headers still require a company-specific gateway profile or API configuration. Authentication requiring token acquisition/refresh needs separate validation; the APIM template does not implement that flow.
+For a simple model route, the connection's **Add a model by id** form provides **Model id**, **Display name**, **Dialect**, **Route**, **Model id in the body**, and **Query parameters**. Manually added models have an **Edit** button; the saved id stays fixed so agents and aliases keep working. For an API version, enter a JSON object such as `{"api-version":"2024-12-01-preview"}`, using the version supplied by your company. These parameters override matching values included in Route. Extra authentication headers still require a company-specific gateway profile or API configuration. Authentication requiring token acquisition/refresh needs separate validation; the APIM template does not implement that flow.
 
 ### Correcting a manually added model
 
@@ -197,11 +196,11 @@ After the actual model routes are configured, probe the intended model and set i
 
 If a gateway responds with a missing-header error, use the header name and value supplied by your company. A charge code is separate from your APIM key.
 
-For a new connection, use the **Additional request headers** table before clicking **Add and probe**. Click **Add header**, enter the **Header field** and **Value**, and add more rows as needed.
+For a new connection, open **Advanced** in the Add a provider form and use the **Additional request headers** table before clicking **Connect and test**. Click **Add header**, enter the **Header field** and **Value**, and add more rows as needed.
 
 For an existing saved connection:
 
-1. Open **Models** and find its saved connection card below **Add a connection**.
+1. Open **Settings › Models** and find its saved connection card.
 2. Click **Connection settings**.
 3. Under **Additional request headers**, click **Add header** and enter the required field/value pair (for example, `x-company-charge-code` and your assigned code).
 4. Click **Save headers**. Removed rows are removed from the saved configuration too.
@@ -278,7 +277,7 @@ $env:Path = "$env:LOCALAPPDATA\rig-tools;$env:Path"
 pnpm.cmd dev:web
 ```
 
-Run those lines separately too. Leave both terminals running and open the Local URL Vite prints, normally [http://localhost:5173](http://localhost:5173). In **Models**, probe the manually configured model with the actual company route, rather than relying on the template's example rows.
+Run those lines separately too. Leave both terminals running and open the Local URL Vite prints, normally [http://localhost:5173](http://localhost:5173). In **Settings › Models**, test the manually configured model with the actual company route, rather than relying on the template's example rows.
 
 ### Windows certificate trust
 

@@ -1,23 +1,32 @@
 import type { BuiltinToolName } from "../agent/tool-names";
 import { fileReadTool } from "./builtin/file_read";
 import { fileWriteTool } from "./builtin/file_write";
+import { fileEditTool } from "./builtin/file_edit";
+import { globTool, grepTool } from "./builtin/search";
+import { taskTool, todoWriteTool } from "./builtin/agentic";
+import { memoryReadTool, memoryWriteTool } from "./builtin/memory";
 import { shellTool } from "./builtin/shell";
 import { webFetchTool } from "./builtin/web_fetch";
 import { loadSkillTool, skillListTool, skillWriteTool } from "./builtin/skills";
 import { agentListTool, agentReadTool, agentWriteTool, modelListTool } from "./builtin/agents";
 import type { ToolSpec } from "./types";
-import { knowledgeReadTool, knowledgeSearchTool, memoryReadTool, memoryWriteTool } from "./builtin/knowledge";
+import { knowledgeReadTool, knowledgeSearchTool } from "./builtin/knowledge";
 
 export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolSpec> = {
   knowledge_read: knowledgeReadTool,
   knowledge_search: knowledgeSearchTool,
-  memory_read: memoryReadTool,
-  memory_write: memoryWriteTool,
   file_read: fileReadTool,
   file_write: fileWriteTool,
-  web_fetch: webFetchTool,
+  file_edit: fileEditTool,
+  glob: globTool,
+  grep: grepTool,
   shell: shellTool,
+  web_fetch: webFetchTool,
+  todo_write: todoWriteTool,
+  task: taskTool,
   load_skill: loadSkillTool,
+  memory_read: memoryReadTool,
+  memory_write: memoryWriteTool,
   agent_list: agentListTool,
   agent_read: agentReadTool,
   agent_write: agentWriteTool,
@@ -26,6 +35,27 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolSpec> = {
   skill_write: skillWriteTool,
 };
 
-export function toolsFor(names: readonly BuiltinToolName[]): ToolSpec[] {
-  return names.map((n) => BUILTIN_TOOLS[n]).filter(Boolean);
+/**
+ * Resolve an agent's tool list. Builtins come from this table; mcp__ names are looked up in the
+ * extra tools the runtime supplies (MCP servers), where mcp__<server>__* takes all of a server's
+ * tools and mcp__* takes every MCP tool.
+ */
+export function toolsFor(names: readonly string[], extra: ToolSpec[] = []): ToolSpec[] {
+  const out: ToolSpec[] = [];
+  const seen = new Set<string>();
+  const add = (t: ToolSpec | undefined) => {
+    if (t && !seen.has(t.definition.name)) {
+      seen.add(t.definition.name);
+      out.push(t);
+    }
+  };
+  for (const n of names) {
+    if (n.endsWith("__*") || n === "mcp__*") {
+      const prefix = n.slice(0, -1);
+      for (const t of extra) if (t.definition.name.startsWith(prefix)) add(t);
+    } else {
+      add(BUILTIN_TOOLS[n as BuiltinToolName] ?? extra.find((t) => t.definition.name === n));
+    }
+  }
+  return out;
 }

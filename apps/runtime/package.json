@@ -12,13 +12,16 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "tsx src/index.ts",
+    "demo": "tsx test/demo.ts",
+    "demo:fresh": "tsx test/demo.ts --fresh",
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
   "dependencies": {
-    "@rig/core": "workspace:*",
     "@hono/node-server": "^1.14.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@napi-rs/keyring": "^1.1.0",
+    "@rig/core": "workspace:*",
     "hono": "^4.7.0",
     "zod": "^4.0.0"
   }

@@ -8,11 +8,8 @@ interface FolderListing {
   truncated: boolean;
 }
 
-export function FolderPicker({ initialPath, onSelect, onClose }: {
-  initialPath: string;
-  onSelect(path: string): void;
-  onClose(): void;
-}) {
+/** Browse folders on the machine running Rig; picking one does not grant an agent anything by itself. */
+export function FolderPicker({ initialPath, onSelect, onClose }: { initialPath: string; onSelect(path: string): void; onClose(): void }) {
   const [listing, setListing] = useState<FolderListing | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,26 +31,46 @@ export function FolderPicker({ initialPath, onSelect, onClose }: {
 
   useEffect(() => {
     void browse(initialPath || undefined);
-    return () => { request.current++; };
+    return () => {
+      request.current++;
+    };
   }, [initialPath]);
 
-  return <div className="card" role="region" aria-label="Choose project folder" style={{ marginBottom: 10, padding: 10 }}>
-    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-      <button type="button" disabled={busy} onClick={() => browse()}>Home</button>
-      <button type="button" disabled={busy || !listing?.parent} onClick={() => browse(listing?.parent ?? undefined)}>Up</button>
-      <button type="button" onClick={onClose}>Close</button>
+  return (
+    <div className="folder-picker" role="region" aria-label="Choose project folder">
+      <div className="row">
+        <button type="button" className="tiny" disabled={busy} onClick={() => browse()}>
+          Home
+        </button>
+        <button type="button" className="tiny" disabled={busy || !listing?.parent} onClick={() => browse(listing?.parent ?? undefined)}>
+          Up
+        </button>
+        {listing && <span className="mono muted grow folder-path">{listing.path}</span>}
+        <button type="button" className="tiny ghost" onClick={onClose}>
+          Close
+        </button>
+      </div>
+      {error && (
+        <div role="alert" className="issue error">
+          {error}
+        </div>
+      )}
+      <div className="folder-list">
+        {busy && !listing && <div className="muted small pad">Loading folders…</div>}
+        {listing?.entries.map((entry) => (
+          <button type="button" key={entry.path} className="folder-entry" disabled={busy} onClick={() => browse(entry.path)}>
+            {entry.name}
+          </button>
+        ))}
+        {listing && !listing.entries.length && !busy && <div className="muted small pad">No subfolders.</div>}
+      </div>
+      {listing?.truncated && <p className="hint">Large folder: only part of the listing is shown. You can still type a path.</p>}
+      <div className="row end">
+        <span className="hint grow">Folders on the machine running Rig. Files stay in place.</span>
+        <button type="button" disabled={busy || !listing || !!error} onClick={() => listing && onSelect(listing.path)}>
+          Use this folder
+        </button>
+      </div>
     </div>
-    <p className="muted" style={{ fontSize: 12 }}>Folders on the machine running Rig. Files stay in place.</p>
-    {listing && <div className="mono" style={{ overflowWrap: "anywhere", fontSize: 12, marginBottom: 6 }}>{listing.path}</div>}
-    {error && <div role="alert" className="issue error">{error}</div>}
-    {busy && <div role="status">Loading folders…</div>}
-    <div style={{ maxHeight: 220, overflowY: "auto" }}>
-      {listing?.entries.map((entry) => <button type="button" key={entry.path} disabled={busy} onClick={() => browse(entry.path)} style={{ display: "block", width: "100%", textAlign: "left", marginBottom: 3, overflowWrap: "anywhere" }}>
-        📁 {entry.name}
-      </button>)}
-      {listing && !listing.entries.length && !busy && <div className="muted">No subfolders.</div>}
-    </div>
-    {listing?.truncated && <p className="muted">Large folder: only part of the listing is shown. You can still enter a path in the workspace field.</p>}
-    <button type="button" className="primary" disabled={busy || !listing || !!error} onClick={() => listing && onSelect(listing.path)} style={{ marginTop: 8, width: "100%" }}>Use this folder</button>
-  </div>;
+  );
 }
