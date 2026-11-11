@@ -1,21 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { DEFAULT_CAPABILITIES, type Dialect } from "@rig/core";
+import { DEFAULT_CAPABILITIES, type Connection, type Dialect, type Model } from "@rig/core";
 import type { AppContext } from "../context";
 import { discoverListed, ensureDefaultAlias, entryToModel, probeConnection, probeModel, seedFromProfile } from "../catalog";
 import { newId } from "../ids";
 import { DiscoverySpec, ExtraHeaders } from "../connection-settings";
-
-const CreateConnection = z.object({
-  name: z.string().min(1).max(60),
-  profileId: z.string().min(1),
-  key: z.string().min(1),
-  baseUrl: z.string().url().optional(),
-  headerName: z.string().min(1).optional(),
-  headerPrefix: z.string().optional(),
-  extraHeaders: ExtraHeaders.optional(),
-  kind: z.enum(["direct", "gateway", "local"]).optional(),
-});
 
 const ManualModel = z.object({
   id: z.string().min(1),
@@ -29,7 +18,40 @@ const ManualModel = z.object({
   pricing: z.object({ input: z.number(), output: z.number(), cachedInput: z.number().optional() }).optional(),
 });
 
+const CreateConnection = z.object({
+  name: z.string().min(1).max(60),
+  profileId: z.string().min(1),
+  key: z.string().min(1),
+  baseUrl: z.string().url().optional(),
+  headerName: z.string().min(1).optional(),
+  headerPrefix: z.string().optional(),
+  extraHeaders: ExtraHeaders.optional(),
+  kind: z.enum(["direct", "gateway", "local"]).optional(),
+  /** Models to add with the connection, for gateways whose routes cannot be discovered. */
+  models: z.array(ManualModel).max(20).optional(),
+});
+
+const ReplaceKey = z.object({ key: z.string().trim().min(1) });
+
 const EditManualModel = ManualModel.omit({ id: true, pricing: true }).partial().strict();
+
+function manualModel(conn: Connection, b: z.infer<typeof ManualModel>): Model {
+  return entryToModel(
+    conn,
+    {
+      id: b.id,
+      displayName: b.displayName,
+      dialect: b.dialect as Dialect,
+      route: b.route,
+      query: b.query,
+      bodyModel: b.bodyModel,
+      capabilities: { ...DEFAULT_CAPABILITIES, reasoning: b.reasoning ?? false },
+      pricing: b.pricing ? { ...b.pricing, source: "estimate" } : undefined,
+      params: b.maxTokensField ? { maxTokensField: b.maxTokensField } : undefined,
+    },
+    "manual",
+  );
+}
 
 export function catalogRoutes(app: AppContext): Hono {
   const r = new Hono();
@@ -60,8 +82,10 @@ export function catalogRoutes(app: AppContext): Hono {
       extraHeaders: headers.data,
       secretLast4: b.key.slice(-4),
     });
-    const models = seedFromProfile(app, conn, profile);
-    return c.json({ connection: conn, models }, 201);
+    // A template's catalog holds example routes; when the user named their own models, those are the real ones.
+    const seeded = profile.template && b.models?.length ? [] : seedFromProfile(app, conn, profile);
+    const added = (b.models ?? []).map((m) => app.models.upsert(manualModel(conn, m)));
+    return c.json({ connection: conn, models: [...seeded, ...added] }, 201);
   });
 
   r.delete("/connections/:id", async (c) => {
@@ -70,6 +94,17 @@ export function catalogRoutes(app: AppContext): Hono {
     await app.secrets.delete(id);
     app.connections.delete(id);
     return c.json({ ok: true });
+  });
+
+  /** Replace the key, for a rotated or switched key. Models, aliases, and settings stay as they are. */
+  r.put("/connections/:id/key", async (c) => {
+    const conn = app.connections.get(c.req.param("id"));
+    if (!conn) return c.json({ error: "not found" }, 404);
+    const parsed = ReplaceKey.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: "A key is required" }, 400);
+    await app.secrets.set(conn.id, parsed.data.key);
+    app.connections.setSecretLast4(conn.id, parsed.data.key.slice(-4));
+    return c.json(app.connections.get(conn.id));
   });
 
   r.patch("/connections/:id/headers", async (c) => {
@@ -104,7 +139,13 @@ export function catalogRoutes(app: AppContext): Hono {
     if (!conn) return c.json({ error: "not found" }, 404);
     const profile = app.profiles.get(conn.profileId);
     const includeListed = c.req.query("includeListed") === "true";
-    const listing = profile ? await discoverListed(app, conn, profile) : { added: [], found: undefined, error: "No gateway profile available for discovery" };
+    // discover=false tests only the models Rig already has, without asking the provider for a list.
+    const discover = c.req.query("discover") !== "false";
+    const listing = !discover
+      ? { added: [], found: undefined, error: undefined }
+      : profile
+        ? await discoverListed(app, conn, profile)
+        : { added: [], found: undefined, error: "No gateway profile available for discovery" };
     const models = await probeConnection(app, conn, { includeListed });
     const boundDefault = ensureDefaultAlias(app);
     return c.json({ models, listed: listing.added.length, found: listing.found, listError: listing.error, boundDefault });
@@ -115,23 +156,7 @@ export function catalogRoutes(app: AppContext): Hono {
     if (!conn) return c.json({ error: "not found" }, 404);
     const parsed = ManualModel.safeParse(await c.req.json());
     if (!parsed.success) return c.json({ error: "invalid body", issues: parsed.error.issues }, 400);
-    const b = parsed.data;
-    const m = entryToModel(
-      conn,
-      {
-        id: b.id,
-        displayName: b.displayName,
-        dialect: b.dialect as Dialect,
-        route: b.route,
-        query: b.query,
-        bodyModel: b.bodyModel,
-        capabilities: { ...DEFAULT_CAPABILITIES, reasoning: b.reasoning ?? false },
-        pricing: b.pricing ? { ...b.pricing, source: "estimate" } : undefined,
-        params: b.maxTokensField ? { maxTokensField: b.maxTokensField } : undefined,
-      },
-      "manual",
-    );
-    app.models.upsert(m);
+    const m = app.models.upsert(manualModel(conn, parsed.data));
     return c.json(m, 201);
   });
 

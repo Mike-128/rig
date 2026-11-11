@@ -6,6 +6,26 @@ import { ConnectionSettings, HeaderFields, headerRecord, type HeaderRow } from "
 
 type ModelRow = Model & { connectionName: string };
 const emptyManual = { id: "", displayName: "", dialect: "openai.chat", route: "", bodyModel: "", maxTokensField: "max_tokens", reasoning: false, query: "{}" };
+type ManualForm = typeof emptyManual;
+
+/** The query-parameter box holds JSON text; the API wants an object of strings. */
+function parseQuery(text: string): Record<string, string> {
+  let query: unknown;
+  try {
+    query = JSON.parse(text || "{}");
+  } catch {
+    throw new Error('Query parameters must be a JSON object, for example {"api-version":"2024-12-01-preview"}.');
+  }
+  if (!query || typeof query !== "object" || Array.isArray(query) || Object.values(query).some((v) => typeof v !== "string")) {
+    throw new Error("Query parameters must be an object with string values.");
+  }
+  return query as Record<string, string>;
+}
+
+/** The body for a new manual model, leaving optional fields out when blank. */
+function manualBody(m: ManualForm) {
+  return { ...m, id: m.id.trim(), route: m.route.trim(), query: parseQuery(m.query), displayName: m.displayName || undefined, bodyModel: m.bodyModel || undefined };
+}
 
 /** Statuses that say the model cannot be used; anything else may still work. */
 const BROKEN = new Set(["unauthorized", "forbidden", "not_found"]);
@@ -45,6 +65,7 @@ export function ModelsPage() {
   const [editingModel, setEditingModel] = useState<ModelRow | null>(null);
   const [savingManual, setSavingManual] = useState(false);
   const [settingsFor, setSettingsFor] = useState<string | null>(null);
+  const [keyFor, setKeyFor] = useState<string | null>(null);
 
   function editManual(m: ModelRow) {
     setError(null);
@@ -101,12 +122,13 @@ export function ModelsPage() {
     }
   }
 
-  async function probe(conn: Connection, includeListed = false) {
+  /** Test a provider's models. discover=false skips asking the provider for its list. */
+  async function probe(conn: Connection, includeListed = false, discover = true, lead: string[] = []) {
     setBusy(conn.id);
     setError(null);
     try {
-      const res = await api<{ models: Model[]; listed: number; found?: number; listError?: string }>(`/connections/${conn.id}/probe?includeListed=${includeListed}`, { method: "POST" });
-      const lines = findings(includeListed ? res.models : res.models.filter((m) => m.origin !== "listed"), res.listError, res.found);
+      const res = await api<{ models: Model[]; listed: number; found?: number; listError?: string }>(`/connections/${conn.id}/probe?includeListed=${includeListed}&discover=${discover}`, { method: "POST" });
+      const lines = [...lead, ...findings(includeListed ? res.models : res.models.filter((m) => m.origin !== "listed"), res.listError, res.found)];
       if (res.listed) lines.push(`${res.listed} new model${res.listed === 1 ? " was" : "s were"} added from the listing; models you already had keep their settings.${includeListed ? "" : " Scan inventory tests them too."}`);
       const hadDefault = aliases.some((a) => a.alias === "default");
       const after = await refresh();
@@ -152,15 +174,7 @@ export function ModelsPage() {
     setError(null);
     setSavingManual(true);
     try {
-      let query: unknown;
-      try {
-        query = JSON.parse(manual.query || "{}");
-      } catch {
-        throw new Error('Query parameters must be a JSON object, for example {"api-version":"2024-12-01-preview"}.');
-      }
-      if (!query || typeof query !== "object" || Array.isArray(query) || Object.values(query).some((v) => typeof v !== "string")) {
-        throw new Error("Query parameters must be an object with string values.");
-      }
+      const query = parseQuery(manual.query);
       const { id, ...fields } = manual;
       await api(editingModel ? `/models/${encodeURIComponent(manualFor)}/${encodeURIComponent(editingModel.providerModelId)}` : `/connections/${manualFor}/models`, {
         method: editingModel ? "PATCH" : "POST",
@@ -223,10 +237,11 @@ export function ModelsPage() {
               profiles={profiles}
               existing={connections}
               onCancel={connections.length ? () => setAdding(false) : undefined}
-              onAdded={async (conn) => {
+              onAdded={async (conn, named) => {
                 setAdding(false);
                 await refresh();
-                await probe(conn);
+                // A named model is tested on its own route; asking the provider for a list is a separate step.
+                await probe(conn, false, !named);
               }}
             />
           )}
@@ -247,8 +262,9 @@ export function ModelsPage() {
                   {!defaultAlias && <option value="">Choose a model…</option>}
                   {connections.map((c) => (
                     <optgroup key={c.id} label={c.name}>
-                      {usable
-                        .filter((m) => m.connectionId === c.id)
+                      {models
+                        // A failing default stays listed so the box shows what is bound; other failing models are hidden.
+                        .filter((m) => m.connectionId === c.id && (!BROKEN.has(m.status) || (defaultAlias?.connectionId === m.connectionId && defaultAlias.modelId === m.providerModelId)))
                         .map((m) => (
                           <option key={m.id} value={`${m.connectionId}\n${m.providerModelId}`}>
                             {m.displayName} ({STATUS_LABEL[m.status] ?? m.status})
@@ -285,6 +301,9 @@ export function ModelsPage() {
                     <button onClick={() => probe(c, true)} disabled={busy !== null} title="Lists the provider's models and tests every one, including newly listed ones. May incur usage.">
                       Scan inventory
                     </button>
+                    <button onClick={() => setKeyFor(keyFor === c.id ? null : c.id)} aria-expanded={keyFor === c.id}>
+                      Replace key
+                    </button>
                     <button onClick={() => setSettingsFor(settingsFor === c.id ? null : c.id)} aria-expanded={settingsFor === c.id}>
                       Connection settings
                     </button>
@@ -306,6 +325,19 @@ export function ModelsPage() {
                     </button>
                   </div>
                 </div>
+                {keyFor === c.id && (
+                  <ReplaceKey
+                    key={c.id}
+                    connection={c}
+                    disabled={busy !== null}
+                    onCancel={() => setKeyFor(null)}
+                    onReplaced={async (updated) => {
+                      setKeyFor(null);
+                      await refresh();
+                      await probe(updated, false, false, [`The key now ends ${updated.secretLast4}. Models, aliases, and settings are unchanged.`]);
+                    }}
+                  />
+                )}
                 {settingsFor === c.id && (
                   <ConnectionSettings
                     key={c.id}
@@ -319,55 +351,7 @@ export function ModelsPage() {
                 {manualFor === c.id && (
                   <div className="subsection">
                     <h4>{editingModel ? `Edit ${editingModel.displayName}` : "Add a model by id"}</h4>
-                    <div className="grid2">
-                      <label className="field">
-                        <span>Model id</span>
-                        <input value={manual.id} disabled={!!editingModel || savingManual} onChange={(e) => setManual({ ...manual, id: e.target.value })} placeholder="e.g. llama3.1:8b" />
-                        <span className="hint">
-                          {editingModel
-                            ? "The id stays fixed so agents and aliases keep working. Change the deployment in Route, or the request model below."
-                            : "Sent in the request body unless you override it below."}
-                        </span>
-                      </label>
-                      <label className="field">
-                        <span>Display name (optional)</span>
-                        <input value={manual.displayName} onChange={(e) => setManual({ ...manual, displayName: e.target.value })} />
-                      </label>
-                      <label className="field">
-                        <span>Dialect</span>
-                        <select value={manual.dialect} onChange={(e) => setManual({ ...manual, dialect: e.target.value })}>
-                          <option value="openai.chat">OpenAI Chat Completions</option>
-                          <option value="anthropic.messages">Anthropic Messages</option>
-                        </select>
-                      </label>
-                      <label className="field">
-                        <span>Route</span>
-                        <input value={manual.route} onChange={(e) => setManual({ ...manual, route: e.target.value })} placeholder={manual.dialect === "openai.chat" ? "/v1/chat/completions" : "/v1/messages"} />
-                        <span className="hint">The path added to the base URL.</span>
-                      </label>
-                      <label className="field">
-                        <span>Model id in the body (optional)</span>
-                        <input value={manual.bodyModel} onChange={(e) => setManual({ ...manual, bodyModel: e.target.value })} />
-                        <span className="hint">For gateways whose deployment name differs from the model id.</span>
-                      </label>
-                      {manual.dialect === "openai.chat" && (
-                        <label className="field">
-                          <span>Max tokens field</span>
-                          <select value={manual.maxTokensField} onChange={(e) => setManual({ ...manual, maxTokensField: e.target.value })}>
-                            <option value="max_tokens">max_tokens</option>
-                            <option value="max_completion_tokens">max_completion_tokens (newer OpenAI models)</option>
-                          </select>
-                        </label>
-                      )}
-                      <label className="field checks">
-                        <input type="checkbox" checked={manual.reasoning} onChange={(e) => setManual({ ...manual, reasoning: e.target.checked })} /> Supports a reasoning effort setting
-                      </label>
-                    </div>
-                    <label className="field">
-                      <span>Query parameters (JSON, string values)</span>
-                      <textarea value={manual.query} onChange={(e) => setManual({ ...manual, query: e.target.value })} placeholder={'{"api-version":"2024-12-01-preview"}'} spellCheck={false} />
-                      <span className="hint">Use {"{}"} for none. These override matching query parameters in Route.</span>
-                    </label>
+                    <ModelFields value={manual} onChange={setManual} idLocked={!!editingModel} disabled={savingManual} />
                     <div className="row">
                       <button className="primary" onClick={saveManual} disabled={!manual.id.trim() || !manual.route.trim() || savingManual}>
                         {savingManual ? "Saving…" : editingModel ? "Save changes" : "Add model"}
@@ -496,8 +480,11 @@ export function ModelsPage() {
 }
 
 /** The add-a-provider form, in rig-probe's shape: a preset first, then only the fields it needs. */
-function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: GatewayProfile[]; existing: Connection[]; onAdded(c: Connection): void; onCancel?: () => void }) {
+function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: GatewayProfile[]; existing: Connection[]; onAdded(c: Connection, named: boolean): void; onCancel?: () => void }) {
   const [profileId, setProfileId] = useState("");
+  // null follows the preset's suggestion; true or false once the user picks.
+  const [nameModel, setNameModel] = useState<boolean | null>(null);
+  const [model, setModel] = useState<ManualForm>(emptyManual);
   const [key, setKey] = useState("");
   const [reveal, setReveal] = useState(false);
   const [name, setName] = useState("");
@@ -520,18 +507,30 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
     return s;
   }, [profile, existing]);
   const needsUrl = Boolean(profile?.template) && !baseUrl.trim();
+  // A gateway template's built-in routes are examples, so naming the real model is the usual path there.
+  const named = nameModel ?? Boolean(profile?.template && !local);
+  const needsModel = named && (!model.id.trim() || !model.route.trim());
+  const blocked = busy || (!key && !local) || needsUrl || needsModel;
 
   async function submit() {
-    if (!profile) return;
+    if (!profile || blocked) return;
     setBusy(true);
     setError(null);
     try {
       const res = await api<{ connection: Connection }>("/connections", {
         method: "POST",
-        json: { name: name.trim() || suggested, profileId: profile.id, key: key || (local ? "local" : ""), baseUrl: baseUrl.trim() || undefined, headerName: headerName.trim() || undefined, extraHeaders: headerRecord(headers) },
+        json: {
+          name: name.trim() || suggested,
+          profileId: profile.id,
+          key: key || (local ? "local" : ""),
+          baseUrl: baseUrl.trim() || undefined,
+          headerName: headerName.trim() || undefined,
+          extraHeaders: headerRecord(headers),
+          models: named ? [manualBody(model)] : undefined,
+        },
       });
       setKey("");
-      onAdded(res.connection);
+      onAdded(res.connection, named);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -548,7 +547,14 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
       <ol className="steps">
         <li>
           <div className="step-title">Choose where the models run</div>
-          <select value={profile.id} onChange={(e) => setProfileId(e.target.value)} aria-label="Provider">
+          <select
+            value={profile.id}
+            onChange={(e) => {
+              setProfileId(e.target.value);
+              setNameModel(null);
+            }}
+            aria-label="Provider"
+          >
             {profiles.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.displayName}
@@ -576,7 +582,7 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
                 onChange={(e) => setKey(e.target.value)}
                 autoComplete="off"
                 spellCheck={false}
-                onKeyDown={(e) => e.key === "Enter" && !busy && (key || local) && !needsUrl && submit()}
+                onKeyDown={(e) => e.key === "Enter" && submit()}
               />
               <button type="button" className="ghost" onClick={() => setReveal(!reveal)}>
                 {reveal ? "Hide" : "Show"}
@@ -611,11 +617,34 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
           </details>
         </li>
         <li>
+          <div className="step-title">Choose the model</div>
+          <div className="checks" role="radiogroup" aria-label="How Rig finds the model">
+            <label>
+              <input type="radio" name="model-source" checked={!named} onChange={() => setNameModel(false)} /> Find the models for me
+            </label>
+            <label>
+              <input type="radio" name="model-source" checked={named} onChange={() => setNameModel(true)} /> I'll name the model and its route
+            </label>
+          </div>
+          {named ? (
+            <>
+              <p className="hint">Use this when the gateway needs a specific route, deployment, or query parameter for each model. You can add more models later.</p>
+              <ModelFields value={model} onChange={setModel} disabled={busy} />
+            </>
+          ) : (
+            <p className="hint">Rig asks the provider for its model list where it can, and tests the models it already knows.{profile.template ? " This preset's built-in routes are examples; if your gateway uses different ones, name the model instead." : ""}</p>
+          )}
+        </li>
+        <li>
           <div className="step-title">Connect and test</div>
-          <p className="hint">Rig sends each known model a tiny request (a few tokens), so you see which ones the key can reach before anything depends on them.</p>
+          <p className="hint">
+            {named
+              ? "Rig sends this model a tiny request (a few tokens), so you see whether the key can reach it before anything depends on it."
+              : "Rig sends each known model a tiny request (a few tokens), so you see which ones the key can reach before anything depends on them."}
+          </p>
           {error && <div className="issue error">{error}</div>}
           <div className="row">
-            <button className="primary" onClick={submit} disabled={busy || (!key && !local) || needsUrl}>
+            <button className="primary" onClick={submit} disabled={blocked}>
               {busy ? "Connecting…" : "Connect and test"}
             </button>
             {onCancel && (
@@ -627,5 +656,125 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
         </li>
       </ol>
     </section>
+  );
+}
+
+/** The fields that describe one model's request: id, dialect, route, and gateway extras. */
+function ModelFields({ value, onChange, idLocked, disabled }: { value: ManualForm; onChange(v: ManualForm): void; idLocked?: boolean; disabled?: boolean }) {
+  const set = (patch: Partial<ManualForm>) => onChange({ ...value, ...patch });
+  return (
+    <>
+      <div className="grid2">
+        <label className="field">
+          <span>Model id</span>
+          <input value={value.id} disabled={idLocked || disabled} onChange={(e) => set({ id: e.target.value })} placeholder="e.g. claude-sonnet or llama3.1:8b" spellCheck={false} />
+          <span className="hint">
+            {idLocked
+              ? "The id stays fixed so agents and aliases keep working. Change the deployment in Route, or the request model below."
+              : "Sent in the request body unless you override it below."}
+          </span>
+        </label>
+        <label className="field">
+          <span>Display name (optional)</span>
+          <input value={value.displayName} disabled={disabled} onChange={(e) => set({ displayName: e.target.value })} />
+        </label>
+        <label className="field">
+          <span>Dialect</span>
+          <select value={value.dialect} disabled={disabled} onChange={(e) => set({ dialect: e.target.value })}>
+            <option value="openai.chat">OpenAI Chat Completions</option>
+            <option value="anthropic.messages">Anthropic Messages</option>
+          </select>
+        </label>
+        <label className="field">
+          <span>Route</span>
+          <input value={value.route} disabled={disabled} onChange={(e) => set({ route: e.target.value })} placeholder={value.dialect === "openai.chat" ? "/v1/chat/completions" : "/v1/messages"} spellCheck={false} />
+          <span className="hint">The path added to the base URL.</span>
+        </label>
+        <label className="field">
+          <span>Model id in the body (optional)</span>
+          <input value={value.bodyModel} disabled={disabled} onChange={(e) => set({ bodyModel: e.target.value })} spellCheck={false} />
+          <span className="hint">For gateways whose deployment name differs from the model id.</span>
+        </label>
+        {value.dialect === "openai.chat" && (
+          <label className="field">
+            <span>Max tokens field</span>
+            <select value={value.maxTokensField} disabled={disabled} onChange={(e) => set({ maxTokensField: e.target.value })}>
+              <option value="max_tokens">max_tokens</option>
+              <option value="max_completion_tokens">max_completion_tokens (newer OpenAI models)</option>
+            </select>
+          </label>
+        )}
+        <label className="field checks">
+          <input type="checkbox" checked={value.reasoning} disabled={disabled} onChange={(e) => set({ reasoning: e.target.checked })} /> Supports a reasoning effort setting
+        </label>
+      </div>
+      <label className="field">
+        <span>Query parameters (JSON, string values)</span>
+        <textarea value={value.query} disabled={disabled} onChange={(e) => set({ query: e.target.value })} placeholder={'{"api-version":"2024-12-01-preview"}'} spellCheck={false} />
+        <span className="hint">Use {"{}"} for none. These override matching query parameters in Route.</span>
+      </label>
+    </>
+  );
+}
+
+/** Swap a provider's key in place, for a rotated or switched key. */
+function ReplaceKey({ connection, disabled, onReplaced, onCancel }: { connection: Connection; disabled?: boolean; onReplaced(c: Connection): void; onCancel(): void }) {
+  const [key, setKey] = useState("");
+  const [reveal, setReveal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { setup } = useSetup();
+  const storedIn = setup?.secrets === "os-keychain" ? "your OS keychain" : "an encrypted file in Rig's data folder";
+  const blocked = saving || disabled || !key.trim();
+
+  async function save() {
+    if (blocked) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await api<Connection>(`/connections/${connection.id}/key`, { method: "PUT", json: { key } });
+      setKey("");
+      onReplaced(updated);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="subsection">
+      <h4>Replace key</h4>
+      <label className="field">
+        <span>New key</span>
+        <div className="row nowrap">
+          <input
+            className="grow"
+            type={reveal ? "text" : "password"}
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && save()}
+            autoComplete="off"
+            spellCheck={false}
+            autoFocus
+          />
+          <button type="button" className="ghost" onClick={() => setReveal(!reveal)}>
+            {reveal ? "Hide" : "Show"}
+          </button>
+        </div>
+        <span className="hint">
+          Replaces the key ending <span className="mono">{connection.secretLast4}</span> in {storedIn}. Models, aliases, headers, and agents stay as they are. Earlier test results are cleared, and Rig tests the known models with the new key.
+        </span>
+      </label>
+      {error && <div className="issue error">{error}</div>}
+      <div className="row">
+        <button className="primary" onClick={save} disabled={blocked}>
+          {saving ? "Saving…" : "Replace and test"}
+        </button>
+        <button className="ghost" disabled={saving} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }

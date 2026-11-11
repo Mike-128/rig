@@ -134,12 +134,15 @@ Enter the key in the **Rig browser application**, not on the runtime status page
 3. For a template, enter the company-provided **Base URL**.
 4. Paste your key into **Key**. It is a masked field; **Show** reveals it. The hint under it says which header the key is sent in and where it is stored.
 5. Open **Advanced** only if needed: **Name** (filled in for you, for example `apim`), **Header for the key** if your gateway expects the key in a different header, and **Additional request headers**. For a direct provider, leave Advanced alone unless instructed otherwise. Confirm the selected destination before submitting your key.
-6. For APIM, first review the custom-endpoint section below. Then click **Connect and test**. This stores the connection and sends provider requests to discover and test models, which may incur usage. The key field clears after the connection is saved, and a summary says what the test found.
-7. Under **Default model**, choose the model agents should use. Rig picks the first reachable model when there is no default yet. **Reachable** means the provider accepted the key for that model, including a request rejected only for validation, so send a short chat before relying on it.
+6. **Choose the model.** **Find the models for me** asks the provider for its model list where it can and tests the models Rig knows. **I'll name the model and its route** takes the model id, dialect, route, model id in the body, and query parameters up front; it is the default for gateway templates, whose built-in routes are only examples. Use it when your gateway needs a specific route or parameter for the model; the fields are described under [APIM keys with a custom endpoint](#apim-keys-with-a-custom-endpoint) below.
+7. For APIM, first review the custom-endpoint section below. Then click **Connect and test**. This stores the connection and sends provider requests to test models, which may incur usage. With a named model, only that model is tested and no listing request is sent. The key field clears after the connection is saved, and a summary says what the test found.
+8. Under **Default model**, choose the model agents should use. Rig picks the first reachable model when there is no default yet. **Reachable** means the provider accepted the key for that model, including a request rejected only for validation, so send a short chat before relying on it.
 
 If no models appear, or the desired Claude/GPT model is missing, confirm the endpoint and supported model IDs/routes with your gateway administrator. A gateway may require a custom profile or **Add a model by id**; do not guess routes from the key alone. One gateway key can cover both Claude and GPT if the gateway exposes both; separate direct providers need separate connections.
 
 The runtime stores credentials in the OS keychain when available and otherwise reports an encrypted-file fallback at startup and in doctor results. The connection card displays only the key's last four characters. You do not need to paste the key again at each startup; Vite and the built UI use the same storage when connected to the same runtime.
+
+To rotate or switch a key, click **Replace key** on the connection card and paste the new one. Models, aliases, headers, and agents are kept; earlier test results are cleared because they were for the old key, and Rig tests the known models with the new key. You do not need to remove and re-add the connection.
 
 ### APIM keys with a custom endpoint
 

@@ -65,6 +65,12 @@ export class ConnectionStore {
     this.db.prepare("UPDATE models SET status = 'unprobed', status_message = NULL, last_probed_at = NULL WHERE connection_id = ?").run(id);
   }
 
+  /** Record a replaced key. Earlier test results were for the old key, so they no longer apply. */
+  setSecretLast4(id: string, last4: string): void {
+    this.db.prepare("UPDATE connections SET secret_last4 = ? WHERE id = ?").run(last4, id);
+    this.db.prepare("UPDATE models SET status = 'unprobed', status_message = NULL, last_probed_at = NULL WHERE connection_id = ?").run(id);
+  }
+
   discovery(id: string): ListModelsSpec | undefined {
     const row = this.db.prepare("SELECT spec FROM connection_discovery WHERE connection_id = ?").get(id) as { spec: string } | undefined;
     return row ? JSON.parse(row.spec) : undefined;
