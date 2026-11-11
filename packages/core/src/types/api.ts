@@ -1,5 +1,6 @@
 import type { RunStatus } from "./events";
 import type { Usage } from "./canonical";
+import type { PermissionMode } from "../engine/policy";
 
 export type SessionKind = "chat" | "workbench" | "task";
 
@@ -10,6 +11,10 @@ export interface Session {
   agentVersion: number;
   workspace: string;
   title: string;
+  /** How much the user wants to be asked; see PermissionMode. */
+  mode: PermissionMode;
+  /** "Always allow" rules recorded during this session, e.g. "file_edit" or "shell:npm test". */
+  allowRules: string[];
   createdAt: string;
   updatedAt: string;
 }

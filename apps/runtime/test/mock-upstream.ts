@@ -7,7 +7,7 @@ import http from "node:http";
  * Models: "mock-claude" (Anthropic dialect), "mock-gpt" (OpenAI dialect). Others -> 404.
  * Behavior: the mock picks a tool from the user's text and the offered tools (see chooseTool):
  * "read" -> file_read, "skill" -> load_skill, "build"/"create an agent" -> agent_write.
- * After a tool result it replies with the result content.
+ * After a tool result it replies with the result content. "slow" in the user's text delays the reply.
  */
 export const GOOD_KEY = "good-key";
 
@@ -120,6 +120,8 @@ export function startMockUpstream(): Promise<Started> {
     const model = String(body.model ?? "");
     const messages = (body.messages ?? []) as { role: string; content: unknown }[];
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+    // "slow" in the latest user text holds the reply back, so tests can act while a run is working.
+    if (/\bslow\b/.test(lastUserText(messages))) await new Promise((r) => setTimeout(r, 400));
 
     // ---------------- Anthropic dialect ----------------
     if (req.url === "/v1/messages" && req.method === "POST") {

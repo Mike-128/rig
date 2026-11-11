@@ -5,14 +5,14 @@ import type { AppContext } from "./context";
  * The runtime's implementation of the capabilities lent to rig-management tools.
  * Agents reach the agent, model, and skill stores only through this surface.
  */
-export function createHost(app: AppContext): HostServices {
+export function createHost(app: AppContext, workspace?: string): HostServices {
   return {
     listAgents: () => app.agents.list().map((a) => ({ slug: a.slug, name: a.name, description: a.description, version: a.version })),
 
     readAgentYaml: (slug) => app.agents.getYaml(slug),
 
     writeAgent: (definition): HostWriteResult => {
-      const res = app.agents.save(definition, { knownSkills: app.skills.names(), deriveSlug: true });
+      const res = app.agents.save(definition, { knownSkills: app.skills.names(workspace), deriveSlug: true });
       return {
         ok: res.ok,
         issues: res.issues,
@@ -35,9 +35,9 @@ export function createHost(app: AppContext): HostServices {
       }));
     },
 
-    listSkills: () => app.skills.list(),
-    readSkill: (name) => app.skills.get(name),
-    readSkillFile: (name, file) => app.skills.readFile(name, file),
+    listSkills: () => app.skills.list(workspace),
+    readSkill: (name) => app.skills.get(name, workspace),
+    readSkillFile: (name, file) => app.skills.readFile(name, file, workspace),
     writeSkill: (name, description, body) => app.skills.write(name, description, body),
   };
 }

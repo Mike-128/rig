@@ -1,10 +1,10 @@
-import type { RunEvent, Usage } from "@rig/core/types";
+import type { ApprovalDecision, RunEvent, Usage } from "@rig/core/types";
 
 export type ThreadItem =
   | { kind: "user"; key: string; text: string }
   | { kind: "assistant"; key: string; text: string; reasoning?: string; live?: boolean }
   | { kind: "tool"; key: string; callId: string; name: string; input: unknown; output?: string; isError?: boolean; durationMs?: number }
-  | { kind: "approval"; key: string; runId: string; callId: string; name: string; input: unknown; decision?: "approve" | "deny" }
+  | { kind: "approval"; key: string; runId: string; callId: string; name: string; input: unknown; decision?: ApprovalDecision }
   | { kind: "notice"; key: string; level: "warning" | "error" | "info"; text: string };
 
 export interface ThreadState {

@@ -36,6 +36,23 @@ function toAnthropicMessages(messages: Message[]): Anthropic.MessageParam[] {
   }));
 }
 
+/**
+ * Prompt caching: one breakpoint on the system prompt (which caches tools + system) and one on the
+ * newest message, so each turn of an agent loop reads the whole previous conversation from cache.
+ */
+function withCacheBreakpoints(messages: Anthropic.MessageParam[]): Anthropic.MessageParam[] {
+  const last = messages[messages.length - 1];
+  if (!last || typeof last.content === "string") return messages;
+  const blocks = [...last.content];
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const b = blocks[i];
+    if (b.type === "thinking" || b.type === "redacted_thinking") continue;
+    blocks[i] = { ...b, cache_control: { type: "ephemeral" } } as Anthropic.ContentBlockParam;
+    break;
+  }
+  return [...messages.slice(0, -1), { ...last, content: blocks }];
+}
+
 function fromAnthropicContent(content: Anthropic.ContentBlock[]): Block[] {
   const out: Block[] = [];
   for (const c of content) {
@@ -80,9 +97,11 @@ export const anthropicAdapter: ProviderAdapter = {
     const params: Anthropic.MessageStreamParams = {
       model: conn.modelId,
       max_tokens: req.maxOutputTokens ?? 16000,
-      messages: toAnthropicMessages(req.messages),
+      messages: req.extensions?.promptCaching === false ? toAnthropicMessages(req.messages) : withCacheBreakpoints(toAnthropicMessages(req.messages)),
     };
-    if (req.system) params.system = req.system;
+    if (req.system) {
+      params.system = req.extensions?.promptCaching === false ? req.system : [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }];
+    }
     if (req.tools?.length) {
       params.tools = req.tools.map((t) => ({
         name: t.name,

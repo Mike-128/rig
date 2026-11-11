@@ -83,7 +83,16 @@ export function openDb(path: string): Db {
   const db = new DatabaseSync(path);
   db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
+}
+
+/** Additive column migrations for databases created by earlier versions. */
+function migrate(db: Db): void {
+  const has = (table: string, column: string) =>
+    (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
+  if (!has("sessions", "mode")) db.exec("ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'default'");
+  if (!has("sessions", "allow_rules")) db.exec("ALTER TABLE sessions ADD COLUMN allow_rules TEXT NOT NULL DEFAULT '[]'");
 }
 
 export function nowIso(): string {

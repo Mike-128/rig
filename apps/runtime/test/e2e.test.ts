@@ -148,7 +148,7 @@ describe("v1 definition of done", () => {
     expect(imported.ok).toBe(true);
     expect(imported.saved.slug).toBe("reader-copy");
     const list = await api<{ slug: string }[]>("/agents");
-    expect(list.map((a) => a.slug).sort()).toEqual(["agent-builder", "assistant", "reader", "reader-copy"]);
+    expect(list.map((a) => a.slug).sort()).toEqual(["agent-builder", "assistant", "coder", "reader", "reader-copy"]);
   });
 
   it("4. runs the agent on the OpenAI dialect: streams, calls a tool, records usage and cost", async () => {
@@ -165,13 +165,14 @@ describe("v1 definition of done", () => {
     expect(types).toContain("tool_call");
     expect(types).toContain("tool_result");
     const result = detail.events.find((e) => e.type === "tool_result") as Extract<RunEvent, { type: "tool_result" }>;
-    expect(result.output).toBe("hello from the workspace");
+    // file_read numbers lines, as the edit tool expects them quoted without the prefix.
+    expect(result.output).toBe("1	hello from the workspace");
     const done = detail.events.find((e) => e.type === "run_completed") as Extract<RunEvent, { type: "run_completed" }>;
     expect(done.turns).toBe(2);
     expect(done.usage.inputTokens).toBe(22);
     expect(done.costUsd).toBeCloseTo((22 * 1 + 16 * 2) / 1_000_000, 10);
     const final = detail.events.filter((e) => e.type === "assistant_message").at(-1) as Extract<RunEvent, { type: "assistant_message" }>;
-    expect(final.message.content[0]).toEqual({ type: "text", text: "The file says: hello from the workspace" });
+    expect(final.message.content[0]).toEqual({ type: "text", text: "The file says: 1	hello from the workspace" });
     // no transient deltas were persisted
     expect(types).not.toContain("text_delta");
 
@@ -201,7 +202,7 @@ describe("v1 definition of done", () => {
     const detail = await api<{ events: RunEvent[] }>(`/sessions/${session.id}`);
     expect(detail.events.map((e) => e.type)).toEqual(expect.arrayContaining(["approval_requested", "approval_resolved", "tool_result"]));
     const final = detail.events.filter((e) => e.type === "assistant_message").at(-1) as Extract<RunEvent, { type: "assistant_message" }>;
-    expect(final.message.content.some((b) => b.type === "text" && b.text === "The file says: gated")).toBe(true);
+    expect(final.message.content.some((b) => b.type === "text" && b.text === "The file says: 1	gated")).toBe(true);
     // the Anthropic-dialect request carried the standard header set through the proxy
     const call = upstream.requests.filter((r) => r.path === "/v1/messages").at(-1)!;
     expect(call.headers["x-api-key"]).toBe(GOOD_KEY);

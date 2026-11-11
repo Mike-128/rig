@@ -67,7 +67,10 @@ export const modelListTool: ToolSpec = {
   },
 };
 
-const TOOL_ENUM = [...AGENT_TOOL_NAMES];
+const TOOL_ITEMS = {
+  type: "string",
+  description: `One of: ${AGENT_TOOL_NAMES.join(", ")}; or an MCP tool as mcp__<server>__<tool>, or mcp__<server>__* for all of a server's tools.`,
+};
 
 export const agentWriteTool: ToolSpec = {
   definition: {
@@ -98,19 +101,19 @@ export const agentWriteTool: ToolSpec = {
         tools: {
           type: "array",
           description:
-            "Tools the agent may use. file_read and web_fetch are read-only. file_write and shell change things and need sandbox level 1. The agent_* , model_list, and skill_* tools let the agent manage this rig, including creating further agents.",
-          items: { type: "string", enum: TOOL_ENUM },
+            "Tools the agent may use. file_read, glob, grep, web_fetch, todo_write, and task are read-only (task runs a sub-agent). file_edit, file_write, and shell change things and need sandbox level 1. The agent_*, model_list, and skill_* tools let the agent manage this rig, including creating further agents.",
+          items: TOOL_ITEMS,
         },
         skills: {
           type: "array",
-          description: "Skill names to attach, from skill_list. Their descriptions sit in the agent's context and it loads the full instructions on demand.",
+          description: "Skill names to attach, from skill_list, or [\"*\"] for every installed skill. Their descriptions sit in the agent's context and it loads the full instructions on demand.",
           items: { type: "string" },
         },
         sandbox: { type: "integer", enum: [0, 1], description: "0 is read-only with no process spawn; 1 allows writes and shell inside the workspace. Defaults to 1." },
         approvals: {
           type: "array",
           description: "Tools that must be approved by the user each time before running. Put anything destructive or outward-facing here.",
-          items: { type: "string", enum: TOOL_ENUM },
+          items: TOOL_ITEMS,
         },
         budget: {
           type: "object",

@@ -1,8 +1,23 @@
 import { z } from "zod";
-import { AGENT_TOOL_NAMES, MANAGEMENT_TOOLS, SIDE_EFFECT_TOOLS, type BuiltinToolName } from "./tool-names";
+import {
+  AGENT_TOOL_NAMES,
+  CODING_TOOLS,
+  EDIT_TOOLS,
+  isAgentToolName,
+  MANAGEMENT_TOOLS,
+  MCP_TOOL_RE,
+  SIDE_EFFECT_TOOLS,
+  type AgentToolName,
+  type BuiltinToolName,
+} from "./tool-names";
 
-export { AGENT_TOOL_NAMES, MANAGEMENT_TOOLS, SIDE_EFFECT_TOOLS };
-export type { BuiltinToolName };
+export { AGENT_TOOL_NAMES, CODING_TOOLS, EDIT_TOOLS, isAgentToolName, MANAGEMENT_TOOLS, MCP_TOOL_RE, SIDE_EFFECT_TOOLS };
+export type { AgentToolName, BuiltinToolName };
+
+const ToolNameSchema = z
+  .string()
+  .refine(isAgentToolName, { error: (iss) => `"${String(iss.input)}" is not a builtin tool or an mcp__<server>__<tool> name` })
+  .transform((v) => v as AgentToolName);
 /** Back-compat alias for the original name. */
 export const BUILTIN_TOOL_NAMES = AGENT_TOOL_NAMES;
 
@@ -22,13 +37,14 @@ export const AgentDefinitionSchema = z.object({
   engine: z.literal("native").default("native"),
   model: ModelBindingSchema,
   instructions: z.string().min(1),
-  tools: z.array(z.enum(AGENT_TOOL_NAMES)).default([]),
+  tools: z.array(ToolNameSchema).default([]),
+  /** Skill names, or "*" for every installed skill. */
   skills: z.array(z.string()).default([]),
   sandbox: z.union([z.literal(0), z.literal(1)]).default(1),
-  approvals: z.array(z.enum(AGENT_TOOL_NAMES)).default([]),
+  approvals: z.array(ToolNameSchema).default([]),
   budget: z
     .object({
-      maxTurns: z.number().int().positive().max(200).default(25),
+      maxTurns: z.number().int().positive().max(500).default(25),
       tokens: z.number().int().positive().optional(),
       usd: z.number().positive().optional(),
     })

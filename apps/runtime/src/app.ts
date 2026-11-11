@@ -39,7 +39,7 @@ export async function buildApp(overrides: Partial<RuntimeConfig> = {}, opts: { f
     agents: new AgentStore(db, config.agentsDir),
     sessions: new SessionStore(db),
     profiles: new ProfileStore(config.profilesDir),
-    skills: new SkillStore(config.skillsDir, path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../skills")),
+    skills: new SkillStore(config.skillsDir, path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../skills"), config.claudeSkillsDir),
     runs,
   };
   runs.attach(app);
