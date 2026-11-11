@@ -27,6 +27,7 @@ export async function startServer(overrides: Partial<RuntimeConfig> = {}, opts: 
     close: () =>
       new Promise<void>((resolve) => {
         server.close(() => resolve());
+        void app.mcp.close();
         app.db.close();
       }),
   };

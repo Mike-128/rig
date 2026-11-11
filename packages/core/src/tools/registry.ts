@@ -31,7 +31,8 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolSpec> = {
 
 /**
  * Resolve an agent's tool list. Builtins come from this table; mcp__ names are looked up in the
- * extra tools the runtime supplies (MCP servers), where mcp__<server>__* takes all of a server's tools.
+ * extra tools the runtime supplies (MCP servers), where mcp__<server>__* takes all of a server's
+ * tools and mcp__* takes every MCP tool.
  */
 export function toolsFor(names: readonly string[], extra: ToolSpec[] = []): ToolSpec[] {
   const out: ToolSpec[] = [];
@@ -43,7 +44,7 @@ export function toolsFor(names: readonly string[], extra: ToolSpec[] = []): Tool
     }
   };
   for (const n of names) {
-    if (n.endsWith("__*")) {
+    if (n.endsWith("__*") || n === "mcp__*") {
       const prefix = n.slice(0, -1);
       for (const t of extra) if (t.definition.name.startsWith(prefix)) add(t);
     } else {

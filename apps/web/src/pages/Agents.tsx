@@ -2,14 +2,21 @@ import { useEffect, useState } from "react";
 import type { AgentSummary, Model, ModelAlias, SkillSummary } from "@rig/core/types";
 import { MANAGEMENT_TOOLS, slugify, type AgentDefinitionInput, type ValidationIssue } from "@rig/core/agent";
 import { api } from "../api";
+import type { McpServerStatus } from "./Mcp";
 
 type ModelRow = Model & { connectionName: string };
 
-const WORKSPACE_TOOLS = ["file_read", "file_write", "web_fetch", "shell", "load_skill"] as const;
+const WORKSPACE_TOOLS = ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill"] as const;
 
 const TOOL_HELP: Record<string, string> = {
-  file_read: "Read files and list directories inside the workspace. Read-only.",
+  file_read: "Read files (with line numbers and ranges) and list directories inside the workspace. Read-only.",
+  glob: "Find files by name pattern. Read-only.",
+  grep: "Search file contents with a regular expression. Read-only.",
+  file_edit: "Edit files by exact string replacement. Needs sandbox 1.",
   file_write: "Create or overwrite files inside the workspace. Needs sandbox 1.",
+  todo_write: "Keep a visible task list for multi-step work.",
+  task: "Delegate work to sub-agents with their own context, in parallel if needed.",
+  "mcp__*": "Every tool from every connected MCP server. Tools that are not read-only ask for approval.",
   web_fetch: "Fetch a public http(s) URL as text. Read-only.",
   shell: "Run a command in the workspace directory. Needs sandbox 1; the widest capability here.",
   load_skill: "Read the full instructions for an attached skill. Added automatically when you attach one.",
@@ -222,6 +229,13 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
     location.hash = `#/s/${s.id}`;
   }
 
+  const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
+  useEffect(() => {
+    api<{ servers: McpServerStatus[] }>("/mcp")
+      .then((r) => setMcpServers(r.servers))
+      .catch(() => {});
+  }, []);
+
   const toggle = (list: "tools" | "approvals" | "skills", name: string) =>
     set(list, form[list].includes(name) ? form[list].filter((t) => t !== name) : [...form[list], name]);
 
@@ -405,6 +419,16 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
 
           <div className="card">
             <h3>Skills</h3>
+            <label className="checks" title="Every skill installed now or later, including Claude Code and project skills">
+              <span>
+                <input
+                  type="checkbox"
+                  checked={form.skills.includes("*")}
+                  onChange={() => setForm((f) => (f.skills.includes("*") ? { ...f, skills: f.skills.filter((s) => s !== "*") } : { ...f, skills: ["*"], tools: f.tools.includes("load_skill") ? f.tools : [...f.tools, "load_skill"] }))}
+                />{" "}
+                All installed skills
+              </span>
+            </label>
             <div className="muted" style={{ marginBottom: 8 }}>
               Only the descriptions sit in the agent's context. It loads the full instructions on demand with load_skill, which is added automatically when you attach one.
             </div>
@@ -435,6 +459,20 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
               </div>
             </div>
             <div className="field">
+              <span className="muted">MCP tools — from servers configured on the MCP page</span>
+              <div className="checks">
+                <label title={TOOL_HELP["mcp__*"]}>
+                  <input type="checkbox" checked={form.tools.includes("mcp__*")} onChange={() => toggle("tools", "mcp__*")} /> all servers
+                </label>
+                {mcpServers.map((s) => (
+                  <label key={s.name} title={s.tools.map((t) => t.name).join(", ")}>
+                    <input type="checkbox" checked={form.tools.includes(`mcp__${s.name}__*`)} onChange={() => toggle("tools", `mcp__${s.name}__*`)} /> {s.name}
+                    {s.status !== "connected" && <span className="muted"> ({s.status})</span>}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="field">
               <span className="muted">Rig management tools — let this agent create and revise other agents and skills</span>
               <div className="checks">
                 {MANAGEMENT_TOOLS.map((t) => (
@@ -447,7 +485,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
             <div className="field">
               <span className="muted">Require approval before running</span>
               <div className="checks">
-                {form.tools.map((t) => (
+                {form.tools.filter((t) => !t.endsWith("*")).map((t) => (
                   <label key={t}>
                     <input type="checkbox" checked={form.approvals.includes(t)} onChange={() => toggle("approvals", t)} /> {t}
                   </label>

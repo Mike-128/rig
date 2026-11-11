@@ -19,6 +19,8 @@ import { agentRoutes } from "./routes/agents";
 import { sessionRoutes } from "./routes/sessions";
 import { skillRoutes } from "./routes/skills";
 import { seedDefaults } from "./seed";
+import { McpManager } from "./mcp";
+import { mcpRoutes } from "./routes/mcp";
 
 export interface BuiltApp {
   app: AppContext;
@@ -41,20 +43,25 @@ export async function buildApp(overrides: Partial<RuntimeConfig> = {}, opts: { f
     profiles: new ProfileStore(config.profilesDir),
     skills: new SkillStore(config.skillsDir, path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../skills"), config.claudeSkillsDir),
     runs,
+    mcp: new McpManager(config.home),
   };
   runs.attach(app);
+  runs.extraTools = () => app.mcp.tools();
+  // Servers connect in the background; runs started before they finish just do not see their tools yet.
+  void app.mcp.start();
   const interrupted = app.sessions.failInterrupted();
   if (interrupted) console.log(`[rig] marked ${interrupted} interrupted run(s) as failed`);
   seedDefaults(app);
 
   const hono = new Hono();
   hono.use("/api/*", cors({ origin: (o) => (o && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o) ? o : ""), credentials: false }));
-  hono.get("/api/health", (c) => c.json({ ok: true, secrets: secrets.backend, home: config.home, version: "0.2.0", skills: app.skills.list().length }));
+  hono.get("/api/health", (c) => c.json({ ok: true, secrets: secrets.backend, home: config.home, version: "0.3.0", skills: app.skills.list().length }));
   hono.route("/proxy", proxyRoutes(app));
   hono.route("/api", catalogRoutes(app));
   hono.route("/api/agents", agentRoutes(app));
   hono.route("/api/skills", skillRoutes(app));
   hono.route("/api", sessionRoutes(app));
+  hono.route("/api/mcp", mcpRoutes(app));
   hono.onError((err, c) => {
     console.error("[rig] unhandled", err);
     return c.json({ error: err.message }, 500);

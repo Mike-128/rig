@@ -8,6 +8,7 @@ import type { SessionStore } from "./stores/sessions";
 import type { ProfileStore } from "./stores/profiles";
 import type { SkillStore } from "./stores/skills";
 import type { RunManager } from "./scheduler";
+import type { McpManager } from "./mcp";
 
 export interface AppContext {
   config: RuntimeConfig;
@@ -20,4 +21,5 @@ export interface AppContext {
   profiles: ProfileStore;
   skills: SkillStore;
   runs: RunManager;
+  mcp: McpManager;
 }

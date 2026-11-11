@@ -85,7 +85,7 @@ const CODER: AgentDefinitionInput = {
 ## Communicating
 
 Be concise and direct. Lead with the outcome. Reference code as path:line. Report failures honestly with the relevant output, and do not claim something works that you have not checked.`,
-  tools: ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill"],
+  tools: ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill", "mcp__*"],
   skills: ["*"],
   sandbox: 1,
   approvals: ["file_edit", "file_write", "shell"],

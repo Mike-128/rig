@@ -3,9 +3,10 @@ import { AgentsPage } from "./pages/Agents";
 import { ModelsPage } from "./pages/Models";
 import { SkillsPage } from "./pages/Skills";
 import { WorkbenchPage } from "./pages/Workbench";
+import { McpPage } from "./pages/Mcp";
 import { api } from "./api";
 
-type Page = "work" | "agents" | "models" | "skills";
+type Page = "work" | "agents" | "models" | "skills" | "mcp";
 
 interface Health {
   ok: boolean;
@@ -16,7 +17,7 @@ interface Health {
 function pageFromHash(): { page: Page; param?: string } {
   const h = location.hash.replace(/^#\/?/, "");
   const [p, param] = h.split("/");
-  if (p === "agents" || p === "models" || p === "skills") return { page: p, param };
+  if (p === "agents" || p === "models" || p === "skills" || p === "mcp") return { page: p, param };
   // "chat" is the pre-workbench route; old links keep working.
   if (p === "s" || p === "chat") return { page: "work", param };
   return { page: "work" };
@@ -54,6 +55,9 @@ export function App() {
         <a className={route.page === "skills" ? "active" : ""} href="#/skills">
           Skills
         </a>
+        <a className={route.page === "mcp" ? "active" : ""} href="#/mcp">
+          MCP
+        </a>
         <a className={route.page === "models" ? "active" : ""} href="#/models">
           Models
         </a>
@@ -67,6 +71,7 @@ export function App() {
         {route.page === "agents" && <AgentsPage initialSlug={route.param} />}
         {route.page === "skills" && <SkillsPage initialName={route.param} />}
         {route.page === "models" && <ModelsPage />}
+        {route.page === "mcp" && <McpPage />}
       </main>
     </div>
   );

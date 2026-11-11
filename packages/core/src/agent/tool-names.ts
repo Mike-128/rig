@@ -21,13 +21,16 @@ export const AGENT_TOOL_NAMES = [
 export type BuiltinToolName = (typeof AGENT_TOOL_NAMES)[number];
 
 /** Tools contributed at runtime by MCP servers are named mcp__<server>__<tool>. */
-export const MCP_TOOL_RE = /^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_.-]+$/;
+export const MCP_TOOL_RE = /^mcp__[A-Za-z0-9_-]+__[A-Za-z0-9_-]+$/;
 
-/** A tool an agent may list: a builtin, or an MCP tool (one tool, or every tool of a server as mcp__<server>__*). */
+/**
+ * A tool an agent may list: a builtin, or MCP tools: one tool, every tool of a server as
+ * mcp__<server>__*, or every MCP tool as mcp__*.
+ */
 export type AgentToolName = BuiltinToolName | `mcp__${string}`;
 
 export function isAgentToolName(name: string): name is AgentToolName {
-  return (AGENT_TOOL_NAMES as readonly string[]).includes(name) || MCP_TOOL_RE.test(name) || /^mcp__[A-Za-z0-9_-]+__\*$/.test(name);
+  return (AGENT_TOOL_NAMES as readonly string[]).includes(name) || MCP_TOOL_RE.test(name) || /^mcp__([A-Za-z0-9_-]+__)?\*$/.test(name);
 }
 
 /** Tools with side effects. Approval-required by default when enabled. */

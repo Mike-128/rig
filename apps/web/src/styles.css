@@ -956,3 +956,9 @@ pre.diff .sign {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.mcp-tools {
+  margin-top: 8px;
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}

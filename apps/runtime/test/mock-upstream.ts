@@ -89,6 +89,12 @@ export function chooseTool(messages: { role: string; content: unknown }[], tools
     };
   }
   if (names.has("task") && /\bdelegate\b/i.test(text)) return { name: "task", args: { description: "Survey the project", prompt: "find every file" } };
+  // "mcp <tool>" calls the first offered MCP tool whose name contains <tool>.
+  const mcp = text.match(/\bmcp (\S+)/i);
+  if (mcp) {
+    const name = [...names].find((n) => n.startsWith("mcp__") && n.includes(mcp[1]));
+    if (name) return { name, args: { text: "hi" } };
+  }
   return undefined;
 }
 
