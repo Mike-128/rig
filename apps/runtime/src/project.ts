@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ProjectInstructions, PromptContext } from "@rig/core";
+import { detectShell, type ProjectInstructions, type PromptContext } from "@rig/core";
 
 const MAX_CHARS = 40_000;
 
@@ -42,7 +42,7 @@ export function loadProjectInstructions(workspace: string, rigHome: string): Pro
 export function environmentFacts(workspace: string): NonNullable<PromptContext["env"]> {
   return {
     platform: `${process.platform === "win32" ? "Windows" : process.platform === "darwin" ? "macOS" : "Linux"} (${os.release()})`,
-    shell: process.platform === "win32" ? "PowerShell" : "bash",
+    shell: detectShell().label,
     date: new Date().toISOString().slice(0, 10),
     isGitRepo: existsSync(path.join(workspace, ".git")),
   };

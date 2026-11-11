@@ -128,6 +128,17 @@ describe("workbench", () => {
     expect((await api<Session>(`/sessions/${session.id}`).then(() => api<Session[]>("/sessions"))).find((s) => s.id === session.id)?.title).toBe("/greet Bob");
   });
 
+  it("attaches the contents of @mentioned files, showing what the user typed", async () => {
+    const session = await api<Session>("/sessions", { method: "POST", json: { agent: "assistant", workspace: project } });
+    const run = await api<{ id: string }>(`/sessions/${session.id}/runs`, { method: "POST", json: { input: "summarize @notes.md and @missing.txt" } });
+    await waitForRun(run.id);
+    const user = (await events(session.id)).find((e) => e.type === "user_message") as Extract<RunEvent, { type: "user_message" }>;
+    expect(user.display).toBe("summarize @notes.md and @missing.txt");
+    const sent = (user.message.content[0] as { text: string }).text;
+    expect(sent).toContain('<file path="notes.md">\nnotes\n</file>');
+    expect(sent).not.toContain('<file path="missing.txt">');
+  });
+
   it("finds files for @mentions by fuzzy match", async () => {
     const session = await api<Session>("/sessions", { method: "POST", json: { agent: "coder", workspace: project } });
     const hits = await api<string[]>(`/sessions/${session.id}/files?q=comp`);

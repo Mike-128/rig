@@ -1,8 +1,16 @@
 import type { RunStatus } from "./events";
 import type { Usage } from "./canonical";
-import type { PermissionMode } from "../engine/policy";
 
 export type SessionKind = "chat" | "workbench" | "task";
+
+/**
+ * How much the user wants to be asked, chosen per session and changeable mid-run.
+ * - default:     the agent's approval list decides
+ * - acceptEdits: file edits run without asking; other approval-gated tools still ask
+ * - plan:        read-only; the agent investigates and proposes, nothing changes
+ * - auto:        everything the agent is allowed to use runs without asking
+ */
+export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto";
 
 export interface Session {
   id: string;

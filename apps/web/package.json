@@ -12,6 +12,9 @@
   },
   "dependencies": {
     "@rig/core": "workspace:*",
+    "diff": "^8.0.4",
+    "dompurify": "^3.4.17",
+    "marked": "^15.0.12",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

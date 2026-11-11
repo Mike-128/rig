@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { ToolSpec } from "../types";
+import { detectShell, shellArgs } from "../shell-detect";
 
 const MAX_OUTPUT = 20_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -20,7 +21,7 @@ export const shellTool: ToolSpec = {
   definition: {
     name: "shell",
     description:
-      "Run a shell command in the workspace directory and return stdout, stderr, and the exit code. PowerShell on Windows, bash elsewhere. Each call starts a fresh shell in the workspace root, so chain dependent steps in one command. Times out after 120 seconds unless timeoutSeconds says otherwise (max 600). Output streams to the user as it runs and is truncated to the last part if long. Prefer file_read, glob, grep, and file_edit over shell equivalents (cat, find, grep, sed).",
+      "Run a shell command in the workspace directory and return stdout, stderr, and the exit code. The shell is named in your environment notes (bash, or PowerShell on Windows without Git Bash). Each call starts a fresh shell in the workspace root, so chain dependent steps in one command. Times out after 120 seconds unless timeoutSeconds says otherwise (max 600). Output streams to the user as it runs and is truncated to the last part if long. Prefer file_read, glob, grep, and file_edit over shell equivalents (cat, find, grep, sed).",
     inputSchema: {
       type: "object",
       properties: {
@@ -38,10 +39,9 @@ export const shellTool: ToolSpec = {
     if (typeof command !== "string" || !command.trim()) return Promise.resolve({ output: "command is required", isError: true });
     const timeoutMs = timeoutSeconds ? Math.min(Math.max(timeoutSeconds * 1000, 1000), 600_000) : DEFAULT_TIMEOUT_MS;
     return new Promise((resolve) => {
-      const isWin = process.platform === "win32";
-      const child = isWin
-        ? spawn("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", command], { cwd: ctx.workspace, windowsHide: true })
-        : spawn("bash", ["-lc", command], { cwd: ctx.workspace, detached: true });
+      const shell = detectShell();
+      // Detached on POSIX so the whole process group can be killed; Windows uses taskkill /T instead.
+      const child = spawn(shell.path, shellArgs(shell, command), { cwd: ctx.workspace, windowsHide: true, detached: process.platform !== "win32" });
       let out = "";
       let err = "";
       let done = false;

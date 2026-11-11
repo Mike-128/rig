@@ -1,0 +1,45 @@
+/**
+ * A throwaway Rig for trying the UI without keys or spending money: the runtime on port 7790 (or
+ * RIG_DEMO_PORT) against the mock model, in a fresh home folder, with a sample project to open.
+ *
+ *   pnpm --filter @rig/runtime demo
+ *
+ * The mock "model" picks tools from keywords in your message: read, edit, run, find, plan,
+ * delegate, skill. Anything else gets an echo. Nothing here touches ~/.rig.
+ */
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { GatewayProfile } from "@rig/core";
+import { startServer } from "../src/server";
+import { serveWebUi } from "../src/web";
+import { GOOD_KEY, startMockUpstream } from "./mock-upstream";
+
+const home = mkdtempSync(path.join(os.tmpdir(), "rig-demo-home-"));
+const project = mkdtempSync(path.join(os.tmpdir(), "rig-demo-project-"));
+writeFileSync(path.join(project, "hello.txt"), "hello from the demo project\n");
+writeFileSync(path.join(project, "AGENTS.md"), "This is a demo project. Keep answers short.\n");
+mkdirSync(path.join(project, "src"), { recursive: true });
+writeFileSync(path.join(project, "src", "app.ts"), "export const answer = 42;\n");
+
+const upstream = await startMockUpstream();
+const profile: GatewayProfile = {
+  id: "mock-gateway",
+  displayName: "Mock gateway (demo)",
+  baseUrl: upstream.url,
+  auth: { headerName: "x-api-key" },
+  models: [{ id: "mock-claude", displayName: "Mock Claude", dialect: "anthropic.messages", route: "/v1/messages", pricing: { input: 3, output: 15 }, capabilities: { maxContextTokens: 200_000 } }],
+};
+mkdirSync(path.join(home, "profiles"), { recursive: true });
+writeFileSync(path.join(home, "profiles", "mock.json"), JSON.stringify(profile));
+
+const rt = await startServer({ home, port: Number(process.env.RIG_DEMO_PORT ?? 7790) }, { fileSecrets: true });
+serveWebUi(rt.hono);
+const api = (p: string, body: unknown, method = "POST") =>
+  fetch(`http://127.0.0.1:${rt.port}/api${p}`, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
+const conn = (await api("/connections", { name: "mock", profileId: "mock-gateway", key: GOOD_KEY })) as { connection: { id: string } };
+await api("/aliases/default", { connectionId: conn.connection.id, modelId: "mock-claude" }, "PUT");
+await api("/sessions", { agent: "coder", workspace: project, title: "Demo project" });
+
+console.log(`\n  Rig demo on http://127.0.0.1:${rt.port}\n  home    ${home}\n  project ${project}\n`);
+console.log("  Try: read hello.txt · edit it · run the tests · find files · plan this · delegate a search\n");

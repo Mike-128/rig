@@ -73,22 +73,39 @@ export function chooseTool(messages: { role: string; content: unknown }[], tools
   }
   if (names.has("load_skill") && /skill/i.test(text)) return { name: "load_skill", args: { name: "agent-design" } };
   if (names.has("file_read") && /read/i.test(text)) return { name: "file_read", args: { path: "hello.txt" } };
+  if (names.has("file_edit") && /\bedit\b/i.test(text)) return { name: "file_edit", args: { path: "hello.txt", old_string: "hello", new_string: "hello, edited" } };
+  if (names.has("shell") && /\brun\b/i.test(text)) return { name: "shell", args: { command: "echo running tests && echo all 12 tests passed" } };
+  if (names.has("glob") && /\bfind\b/i.test(text)) return { name: "glob", args: { pattern: "**/*" } };
+  if (names.has("todo_write") && /\bplan\b/i.test(text)) {
+    return {
+      name: "todo_write",
+      args: {
+        todos: [
+          { content: "Read the code", status: "completed" },
+          { content: "Make the change", status: "in_progress", activeForm: "Making the change" },
+          { content: "Run the tests", status: "pending" },
+        ],
+      },
+    };
+  }
+  if (names.has("task") && /\bdelegate\b/i.test(text)) return { name: "task", args: { description: "Survey the project", prompt: "find every file" } };
   return undefined;
 }
 
+/** The tool result the model is answering, if the latest turn carries one; earlier results are history. */
 function anthropicToolResult(messages: { role: string; content: unknown }[]): string | undefined {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const c = messages[i].content;
-    if (Array.isArray(c)) {
-      const r = c.find((b) => b.type === "tool_result");
-      if (r) return typeof r.content === "string" ? r.content : JSON.stringify(r.content);
-    }
-  }
-  return undefined;
+  const c = messages[messages.length - 1]?.content;
+  if (!Array.isArray(c)) return undefined;
+  const r = c.find((b) => b.type === "tool_result");
+  if (!r) return undefined;
+  return typeof r.content === "string" ? r.content : JSON.stringify(r.content);
 }
 
 function openaiToolResult(messages: { role: string; content: unknown }[]): string | undefined {
-  for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === "tool") return String(messages[i].content);
+  // Tool messages come last, possibly followed by a user message carrying steering text.
+  for (let i = messages.length - 1; i >= 0 && (messages[i].role === "tool" || messages[i].role === "user"); i--) {
+    if (messages[i].role === "tool") return String(messages[i].content);
+  }
   return undefined;
 }
 

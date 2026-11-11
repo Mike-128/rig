@@ -1,17 +1,11 @@
 import type { AgentDefinition } from "../agent/schema";
 import { EDIT_TOOLS } from "../agent/tool-names";
 import type { ToolSpec } from "../tools/types";
+import type { PermissionMode } from "../types/api";
 
 export type PolicyDecision = { decision: "allow" } | { decision: "deny"; reason: string } | { decision: "require_approval" };
 
-/**
- * How much the user wants to be asked, chosen per session and changeable mid-run.
- * - default:     the agent's approval list decides
- * - acceptEdits: file edits run without asking; other approval-gated tools still ask
- * - plan:        read-only; the agent investigates and proposes, nothing changes
- * - auto:        everything the agent is allowed to use runs without asking
- */
-export type PermissionMode = "default" | "acceptEdits" | "plan" | "auto";
+export type { PermissionMode };
 export const PERMISSION_MODES: readonly PermissionMode[] = ["default", "acceptEdits", "plan", "auto"];
 
 export interface PolicyEvaluator {

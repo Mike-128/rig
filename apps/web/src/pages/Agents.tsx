@@ -219,7 +219,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
   async function runIt() {
     if (!editing) return;
     const s = await api<{ id: string }>("/sessions", { method: "POST", json: { agent: editing } });
-    location.hash = `#/chat/${s.id}`;
+    location.hash = `#/s/${s.id}`;
   }
 
   const toggle = (list: "tools" | "approvals" | "skills", name: string) =>
@@ -252,7 +252,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
           style={{ width: "100%", marginBottom: 12 }}
           onClick={async () => {
             const s = await api<{ id: string }>("/sessions", { method: "POST", json: { agent: "agent-builder" } });
-            location.hash = `#/chat/${s.id}`;
+            location.hash = `#/s/${s.id}`;
           }}
         >
           Or describe one in chat

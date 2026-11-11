@@ -3,8 +3,8 @@ import { streamSSE } from "hono/streaming";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
-import { existsSync, statSync } from "node:fs";
-import { PERMISSION_MODES, projectMessages, TERMINAL_EVENTS, walkFiles, type PermissionMode, type RunEvent, type Session } from "@rig/core";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { PERMISSION_MODES, projectMessages, resolveInWorkspace, TERMINAL_EVENTS, walkFiles, type PermissionMode, type RunEvent, type Session } from "@rig/core";
 import type { AppContext } from "../context";
 import { newId } from "../ids";
 
@@ -25,6 +25,33 @@ function expandSlashSkill(app: AppContext, session: Session, input: string): { i
 }
 
 const FILE_INDEX_LIMIT = 20_000;
+const MENTION_MAX_FILES = 10;
+const MENTION_MAX_CHARS = 100_000;
+
+/**
+ * "@path" mentions of files in the session's folder attach the file's contents to the turn, so the
+ * agent starts with what the user pointed at instead of spending a call to read it.
+ */
+function attachMentions(session: Session, turn: { input: string; display?: string }): { input: string; display?: string } {
+  const paths = [...new Set([...turn.input.matchAll(/(?:^|\s)@([^\s@]+)/g)].map((m) => m[1].replace(/[.,;:!?)]+$/, "")))];
+  const blocks: string[] = [];
+  for (const rel of paths.slice(0, MENTION_MAX_FILES)) {
+    let abs: string;
+    try {
+      abs = resolveInWorkspace(session.workspace, rel);
+    } catch {
+      continue;
+    }
+    if (!existsSync(abs) || !statSync(abs).isFile()) continue;
+    const buf = readFileSync(abs);
+    if (buf.subarray(0, 8000).includes(0)) continue;
+    const text = buf.toString("utf8");
+    const body = text.length > MENTION_MAX_CHARS ? `${text.slice(0, MENTION_MAX_CHARS)}\n[truncated; read the rest with file_read]` : text;
+    blocks.push(`<file path="${rel}">\n${body}\n</file>`);
+  }
+  if (!blocks.length) return turn;
+  return { input: `${turn.input}\n\nFiles the user mentioned:\n\n${blocks.join("\n\n")}`, display: turn.display ?? turn.input };
+}
 const MODE_ENUM = z.enum(PERMISSION_MODES as [PermissionMode, ...PermissionMode[]]);
 
 const CreateSession = z.object({
@@ -132,7 +159,7 @@ export function sessionRoutes(app: AppContext): Hono {
     if (!s) return c.json({ error: "not found" }, 404);
     const b = z.object({ input: z.string().min(1) }).safeParse(await c.req.json());
     if (!b.success) return c.json({ error: "input is required" }, 400);
-    const turn = expandSlashSkill(app, s, b.data.input);
+    const turn = attachMentions(s, expandSlashSkill(app, s, b.data.input));
     // A message sent while the agent is working steers it: it reaches the model at the next turn boundary.
     if (app.runs.steer(s.id, turn.input)) return c.json({ steered: true, runId: app.runs.activeRunFor(s.id)?.id }, 202);
     return c.json(app.runs.submit(s, turn.input, { display: turn.display }), 202);
