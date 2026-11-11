@@ -203,7 +203,7 @@ export function TeamPage() {
           what everyone gets. The repo holds definitions only, not deliverables.
         </div>
         {error && <div className="issue error">{error}</div>}
-        {msg && <div className="issue" style={{ color: "var(--ok)" }}>{msg}</div>}
+        {msg && <div className="issue ok">{msg}</div>}
 
         {!conn ? (
           <SignIn onDone={(c) => {

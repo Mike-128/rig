@@ -11,6 +11,8 @@
     "test": "echo \"no web tests\""
   },
   "dependencies": {
+    "@fontsource/atkinson-hyperlegible-mono": "5.3.0",
+    "@fontsource/host-grotesk": "5.3.0",
     "@rig/core": "workspace:*",
     "diff": "^8.0.4",
     "dompurify": "^3.4.17",

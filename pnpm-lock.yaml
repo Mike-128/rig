@@ -68,6 +68,12 @@ importers:
 
   apps/web:
     dependencies:
+      '@fontsource/atkinson-hyperlegible-mono':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource/host-grotesk':
+        specifier: 5.3.0
+        version: 5.3.0
       '@rig/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -532,6 +538,12 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@fontsource/atkinson-hyperlegible-mono@5.3.0':
+    resolution: {integrity: sha512-7Iha5azCRXJVk4NdxbVdKAE+4p/rMJoW6dslvhktugDFPSp7kxFRGAavBtwtSTrnyNhKXW8w1NHgMnrh/6OshA==}
+
+  '@fontsource/host-grotesk@5.3.0':
+    resolution: {integrity: sha512-/4lcEvSbI3IELjz7UHW5Z1tXuRwOJACKK1ynJKSR28/MscudnKjxXIPQYfRmguv4niURtuksL0Hiusx+SPZS8w==}
 
   '@hono/node-server@1.19.17':
     resolution: {integrity: sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==}
@@ -1926,6 +1938,10 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.2':
     optional: true
+
+  '@fontsource/atkinson-hyperlegible-mono@5.3.0': {}
+
+  '@fontsource/host-grotesk@5.3.0': {}
 
   '@hono/node-server@1.19.17(hono@4.13.5)':
     dependencies:

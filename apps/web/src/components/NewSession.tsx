@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { AgentSummary, PermissionMode, Session } from "@rig/core/types";
 import { api } from "../api";
 import { desktop } from "../desktop";
+import type { Settings } from "../setup";
 
 export const MODE_LABEL: Record<PermissionMode, string> = {
   default: "Ask before changes",
@@ -32,15 +33,26 @@ export function NewSessionDialog({ agents, folder: initialFolder, onCreated, onC
   const [folder, setFolder] = useState(initialFolder ?? "");
   const [agent, setAgent] = useState("");
   const [mode, setMode] = useState<PermissionMode>("default");
+  const [prefs, setPrefs] = useState<Settings>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     api<{ path: string }[]>("/projects").then(setRecent).catch(() => {});
+    api<Settings>("/settings")
+      .then((s) => {
+        setPrefs(s);
+        if (s.defaultMode) setMode(s.defaultMode);
+      })
+      .catch(() => {});
   }, []);
 
   // A folder means coding; no folder means a plain chat in a scratch workspace.
-  const effectiveAgent = agent || (folder ? (agents.some((a) => a.slug === "coder") ? "coder" : "assistant") : "assistant");
+  // Settings > New sessions can name other agents; a missing one falls back to the built-ins.
+  const has = (slug?: string) => Boolean(slug && agents.some((a) => a.slug === slug));
+  const projectAgent = has(prefs.projectAgent) ? prefs.projectAgent! : has("coder") ? "coder" : "assistant";
+  const chatAgent = has(prefs.chatAgent) ? prefs.chatAgent! : "assistant";
+  const effectiveAgent = agent || (folder ? projectAgent : chatAgent);
 
   async function start(path = folder) {
     setBusy(true);

@@ -236,6 +236,7 @@ function refreshTray(): void {
     Menu.buildFromTemplate([
       { label: "Show Rig", accelerator: hotkey, click: () => show() },
       { label: "New session…", click: () => show("#/s") },
+      { label: "Settings", click: () => show("#/settings") },
       ...(approvals.length ? [{ type: "separator" as const }, ...approvals] : []),
       { type: "separator" },
       { label: "Open data folder", click: () => void shell.openPath(path.join(app.getPath("home"), ".rig")) },

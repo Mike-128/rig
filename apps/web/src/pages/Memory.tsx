@@ -50,7 +50,7 @@ export function MemoryPage() {
     setError(null);
     try {
       await api(`/memory/${draft.scope}/${encodeURIComponent(draft.name)}`, { method: "PUT", json: { description: draft.description, type: draft.type, body: draft.body } });
-      setMsg(draft.scope === "team" ? `Proposed "${draft.name}" to the team. Open a pull request on the Team page.` : `Saved "${draft.name}".`);
+      setMsg(draft.scope === "team" ? `Proposed "${draft.name}" to the team. Open a pull request in Settings, Team and GitHub.` : `Saved "${draft.name}".`);
       setDraft(null);
       await load();
       if (draft.scope === "personal") setSelected({ name: draft.name, scope: "personal" });
@@ -64,7 +64,7 @@ export function MemoryPage() {
     try {
       if (m.scope === "personal") await api(`/memory/personal/${m.name}`, { method: "DELETE" });
       else await api("/team/remove", { method: "POST", json: { kind: "memory", name: m.name } });
-      setMsg(m.scope === "team" ? `Proposed removing "${m.name}". Open a pull request on the Team page.` : `Deleted "${m.name}".`);
+      setMsg(m.scope === "team" ? `Proposed removing "${m.name}". Open a pull request in Settings, Team and GitHub.` : `Deleted "${m.name}".`);
       setSelected(null);
       await load();
     } catch (e) {
@@ -92,7 +92,7 @@ export function MemoryPage() {
                 <div className="sub clamp">{m.description}</div>
               </a>
             ))}
-            {!group(scope).length && <div className="muted small pad">{scope === "team" && !teamConnected ? "Connect a team repo on the Team page." : "None yet."}</div>}
+            {!group(scope).length && <div className="muted small pad">{scope === "team" && !teamConnected ? "Connect a team repo in Settings, Team and GitHub." : "None yet."}</div>}
           </div>
         ))}
         {proposed.filter((p) => !memories.some((m) => m.scope === "team" && m.name === p.name)).length > 0 && (
@@ -104,7 +104,7 @@ export function MemoryPage() {
       <section className="content">
         <div className="scroll narrow">
           {error && <div className="issue error">{error}</div>}
-          {msg && <div className="issue" style={{ color: "var(--ok)" }}>{msg}</div>}
+          {msg && <div className="issue ok">{msg}</div>}
           {draft ? (
             <div className="card">
               <h3>{draft.scope === "team" ? "Propose a team memory" : "Personal memory"}</h3>
@@ -162,7 +162,7 @@ export function MemoryPage() {
               <div className="card">
                 <div className="muted">{current.description}</div>
                 <div className="muted small" style={{ marginTop: 4 }}>
-                  {current.author && `by ${current.author} · `}
+                  {current.author && `by ${current.author}, `}
                   {current.updated && `updated ${current.updated}`}
                 </div>
               </div>

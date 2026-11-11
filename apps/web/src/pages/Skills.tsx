@@ -249,7 +249,7 @@ export function SkillsPage({ initialName }: { initialName?: string }) {
       <section className="content">
         <div className="scroll">
           {error && <div className="issue error">{error}</div>}
-          {msg && <div className="issue" style={{ color: "var(--ok)" }}>{msg}</div>}
+          {msg && <div className="issue ok">{msg}</div>}
           {data.problems.map((p, i) => (
             <div key={i} className="issue warning">
               {p.dir}: {p.error}
@@ -306,7 +306,7 @@ export function SkillsPage({ initialName }: { initialName?: string }) {
                         setError(null);
                         try {
                           await api("/team/share", { method: "POST", json: { kind: "skill", name: detail.name } });
-                          setMsg("Queued for the team. Open the pull request on the Team page.");
+                          setMsg("Queued for the team. Open the pull request in Settings, Team and GitHub.");
                         } catch (e) {
                           setError((e as Error).message);
                         }
@@ -320,7 +320,7 @@ export function SkillsPage({ initialName }: { initialName?: string }) {
                       className="danger"
                       onClick={async () => {
                         await api("/team/remove", { method: "POST", json: { kind: "skill", name: detail.name } });
-                        setMsg("Proposed removing this skill from the team. Open the pull request on the Team page.");
+                        setMsg("Proposed removing this skill from the team. Open the pull request in Settings, Team and GitHub.");
                       }}
                     >
                       Propose removal
@@ -355,7 +355,7 @@ export function SkillsPage({ initialName }: { initialName?: string }) {
                 <div className="muted">{detail.description}</div>
                 <div className="muted small mono" style={{ marginTop: 6 }}>
                   {detail.dir}
-                  {detail.origin && ` · from github.com/${detail.origin.repo}/${detail.origin.path} @ ${detail.origin.sha?.slice(0, 7) ?? detail.origin.ref}`}
+                  {detail.origin && `, from github.com/${detail.origin.repo}/${detail.origin.path} @ ${detail.origin.sha?.slice(0, 7) ?? detail.origin.ref}`}
                 </div>
                 <div className="muted small" style={{ marginTop: 6 }}>
                   Run it in a session with <span className="mono">/{detail.name}</span>, or attach it to an agent.

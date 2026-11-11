@@ -48,6 +48,8 @@ apps/runtime/           the local daemon (Hono API + loopback proxy + SQLite)
   src/github.ts         GitHub sign-in as the user (gh CLI token, PAT, device flow) and REST client; EMU and ghe.com hosts
   src/team.ts           team repo: sync over the REST API, change queue, pull requests built with the Git Data API
   src/stores/memory.ts  personal memory (~/.rig/memory) plus team memory read from the synced repo
+  src/stores/settings.ts  preferences for new sessions (~/.rig/settings.json)
+  src/routes/settings.ts  /settings, /instructions (~/.rig/RIG.md), and /setup, the facts the Setup checklist is built from
   test/demo.ts          the whole app against the mock model in a throwaway home (`pnpm --filter @rig/runtime demo`)
 
 apps/web/               React UI (Sessions workbench, Agents, Skills, MCP, Models), SSE-driven
@@ -111,6 +113,10 @@ Events are split deliberately: **transient** events (`text_delta`, `reasoning_de
 
 Team content plugs into the existing stores as one more source: `AgentStore` reads `repo/agents/*.yaml` (local shadows team; team agents are never written locally), `SkillStore` adds a `team` layer between user and Claude Code, and `MemoryStore` reads `repo/memory/*.md`. Shared agents must bind to an alias, since connections are per person; personal skills an agent lists are staged alongside it. `memory_write` with scope `team` stages a change with `origin: "agent"` and says plainly that nothing is in effect until a human merges it.
 
+### Settings and first run
+
+The web shell has four destinations (Sessions, Agents, Skills, Memory) plus **Settings**, which holds everything that configures Rig: Setup, Models, New sessions, Your instructions, Team and GitHub, MCP servers, About. Old `#/models`, `#/team`, and `#/mcp` links route into it. `GET /api/setup` returns facts, not verdicts; the one judgement it makes is `ready`, true when the `default` alias points at a model whose last probe did not fail (`unprobed` still counts, since an untested model may work). The UI derives the checklist from those facts in `pages/Settings.tsx`, and anything that changes setup state dispatches `rig:setup` so the nav and the welcome screen refresh. The runtime, not the UI, binds `default` on the first successful probe (`ensureDefaultAlias` in `catalog.ts`, which avoids preview models); the Models page only reports what it chose. The add-a-provider form follows rig-probe: a preset with its description, only the fields that preset needs, the rest under Advanced, and probe results summarized as sentences.
+
 ### Memory
 
 One fact per markdown file with YAML frontmatter (`name`, `description`, `type`, `author`, `updated`), parsed in `packages/core/src/memory`. Descriptions go into the system prompt under "Memory" when the agent has `memory_read`, framed as possibly stale context that is never instructions; bodies load through `memory_read`. Personal writes apply at once; team writes are staged.
@@ -140,7 +146,7 @@ Requires Node 22.13+ (uses the built-in `node:sqlite`) and pnpm.
 ```bash
 pnpm install
 pnpm typecheck          # all four packages
-pnpm test               # 87 tests: 46 core + 41 runtime
+pnpm test               # 90 tests: 46 core + 44 runtime
 pnpm build              # builds the web UI into apps/web/dist
 pnpm dev:runtime        # runtime on :7777 (tsx watch)
 pnpm dev:web            # Vite on :5173, proxies /api to :7777
@@ -176,7 +182,8 @@ When you fix a provider-compatibility bug, encode it in the mock so it becomes a
   memory/           personal memory, one note per .md file
   github.json       who is signed in to GitHub, and on which host (the token is in the keychain)
   team/             team.json (repo), repo/ (synced copy), manifest.json, pending.json (queued changes), prs.json
-  RIG.md            the user's standing instructions for every project (optional)
+  RIG.md            the user's standing instructions for every project (optional; Settings › Your instructions)
+  settings.json     defaults for new sessions: projectAgent, chatAgent, defaultMode (all optional)
 ```
 
 Keys live in the **OS keychain** under service `rig` (legacy service `harness` is read once and copied forward). If the keychain is unavailable, the runtime falls back to AES-256-GCM files under `~/.rig/secrets` and says so at startup. Keys are never in the database, never in the repo, never sent to the UI — the UI sees only the last 4 characters.
@@ -243,7 +250,7 @@ These cost real debugging time. They are not documented anywhere obvious.
 
 ## 9. Known gaps and open work
 
-- **Cost shows `$0.0000` for discovered models.** Models found by listing carry no pricing, and the bundled Gemini catalog predates the 3.5–3.8 models. The clean fix is a per-model pricing editor in the Models page, not chasing provider catalogs in a static file.
+- **Cost shows `$0.0000` for discovered models.** Models found by listing carry no pricing, and the bundled Gemini catalog predates the 3.5–3.8 models. The clean fix is a per-model pricing editor in Settings › Models, not chasing provider catalogs in a static file.
 - **Repo folder is still `C:\Users\Michael\Harness`** on the author's machine while the project is Rig. Cosmetic.
 - **`@rig` npm scope is unverified.** Irrelevant while every package is `private: true`.
 - **Built since v0.2:** the workbench entry point (§8) with project folders, sub-agents via the `task` tool (one level, results only, no run tree in the UI), MCP tool sources, permission modes, steering, and compaction.

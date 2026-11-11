@@ -26,7 +26,7 @@ function relTime(iso: string): string {
   return `${Math.floor(s / 86400)}d`;
 }
 
-export function WorkbenchPage({ sessionId, home }: { sessionId?: string; home?: string }) {
+export function WorkbenchPage({ sessionId, home, ready }: { sessionId?: string; home?: string; ready?: boolean }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [skills, setSkills] = useState<SkillSummary[]>([]);
@@ -243,7 +243,7 @@ export function WorkbenchPage({ sessionId, home }: { sessionId?: string; home?: 
     <div className={`workbench ${sidebar ? "" : "no-side"}`}>
       {sidebar && (
         <aside className="wb-side">
-          <button className="primary block" onClick={() => setDialog({})} title={`New session (${modLabel}+N)`}>
+          <button className="block" onClick={() => setDialog({})} title={`New session (${modLabel}+N)`}>
             + New session
           </button>
           <input className="search" placeholder="Filter sessions" value={filter} onChange={(e) => setFilter(e.target.value)} />
@@ -273,7 +273,7 @@ export function WorkbenchPage({ sessionId, home }: { sessionId?: string; home?: 
 
       <section className="wb-main">
         {!session ? (
-          <Welcome onNew={(folder) => setDialog({ folder })} />
+          <Welcome ready={ready} onNew={(folder) => setDialog({ folder })} />
         ) : (
           <>
             <header className="wb-head">
@@ -367,12 +367,12 @@ export function WorkbenchPage({ sessionId, home }: { sessionId?: string; home?: 
                   context {contextPct}%<span className="meter"><span style={{ width: `${contextPct}%` }} /></span>
                 </span>
                 <span>
-                  {fmtTokens(thread.usage.inputTokens + (thread.usage.cachedInputTokens ?? 0))} in · {fmtTokens(thread.usage.outputTokens)} out
+                  {fmtTokens(thread.usage.inputTokens + (thread.usage.cachedInputTokens ?? 0))} in, {fmtTokens(thread.usage.outputTokens)} out
                 </span>
                 {thread.costUsd > 0 && <span>${thread.costUsd.toFixed(thread.costUsd < 1 ? 3 : 2)}</span>}
                 {running && activeTodo && <span className="active-todo">{activeTodo.activeForm ?? activeTodo.content}</span>}
                 <span className="spacer" />
-                <span className="hint">Shift+Tab mode · Esc stop · {modLabel}+/ help</span>
+                <span className="hint">Shift+Tab mode, Esc stop, {modLabel}+/ help</span>
               </div>
             </footer>
           </>
@@ -512,7 +512,7 @@ function ApprovalBar({ t, more, onDecide }: { t: ToolItem; more: number; onDecid
   );
 }
 
-function Welcome({ onNew }: { onNew: (folder?: string) => void }) {
+function Welcome({ onNew, ready }: { onNew: (folder?: string) => void; ready?: boolean }) {
   const [recent, setRecent] = useState<{ path: string }[]>([]);
   useEffect(() => {
     api<{ path: string }[]>("/projects").then(setRecent).catch(() => {});
@@ -521,8 +521,19 @@ function Welcome({ onNew }: { onNew: (folder?: string) => void }) {
     <div className="welcome">
       <h1>Rig</h1>
       <p className="muted">Open a project folder to work on code with an agent, or start a chat.</p>
+      {ready === false && (
+        <div className="setup-callout">
+          <div>
+            <strong>Connect a model first.</strong>
+            <div className="muted">Agents need a model to think with. Add a key for Anthropic, OpenAI, Google, your gateway, or a local server; it takes a minute.</div>
+          </div>
+          <a className="btn btn-primary big" href="#/settings/setup">
+            Set up Rig
+          </a>
+        </div>
+      )}
       <div className="row center">
-        <button className="primary big" onClick={() => onNew()}>
+        <button className={`big ${ready === false ? "" : "primary"}`} onClick={() => onNew()}>
           Open a project…
         </button>
         <button className="big" onClick={() => onNew("")}>
@@ -541,7 +552,7 @@ function Welcome({ onNew }: { onNew: (folder?: string) => void }) {
         </div>
       )}
       <p className="muted small">
-        {modLabel}+N new session · {modLabel}+B sidebar · {modLabel}+/ shortcuts
+        {modLabel}+N new session, {modLabel}+B sidebar, {modLabel}+/ shortcuts
       </p>
     </div>
   );
@@ -558,11 +569,11 @@ function Help({ onClose, commands }: { onClose: () => void; commands: SlashComma
               ["Enter", "Send (while the agent works: steer it at its next step)"],
               ["Shift+Enter", "New line"],
               ["Esc", "Stop the agent"],
-              ["Shift+Tab", "Cycle permissions: ask · accept edits · plan · auto"],
+              ["Shift+Tab", "Cycle permissions: ask, accept edits, plan, auto"],
               ["↑ / ↓", "Previous messages (in an empty box)"],
               ["/", "Commands and skills"],
               ["@", "Mention a file"],
-              ["Enter / A / Esc", "Approve · always allow · deny, when asked"],
+              ["Enter / A / Esc", "Approve, always allow, or deny, when asked"],
               [`${modLabel}+N`, "New session"],
               [`${modLabel}+B`, "Toggle sidebar"],
             ].map(([k, v]) => (

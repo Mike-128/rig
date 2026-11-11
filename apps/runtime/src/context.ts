@@ -13,6 +13,8 @@ import type { GitHubAuth } from "./github";
 import type { TeamManager } from "./team";
 import type { MemoryStore } from "./stores/memory";
 
+import type { SettingsStore } from "./stores/settings";
+
 export interface AppContext {
   config: RuntimeConfig;
   db: Db;
@@ -28,4 +30,5 @@ export interface AppContext {
   github: GitHubAuth;
   team: TeamManager;
   memory: MemoryStore;
+  settings: SettingsStore;
 }

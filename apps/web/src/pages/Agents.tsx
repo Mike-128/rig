@@ -187,7 +187,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
     try {
       const res = await api<{ ok: boolean; issues: ValidationIssue[] }>(`/team/agents/${editing}`, { method: "PUT", json: toInput(form) });
       setIssues(res.issues);
-      setMsg("Proposed to the team. Open the pull request on the Team page.");
+      setMsg("Proposed to the team. Open the pull request in Settings, Team and GitHub.");
     } catch (e) {
       const err = e as { body?: { issues?: ValidationIssue[] }; message: string };
       setIssues(err.body?.issues ?? [{ path: "", message: err.message, severity: "error" }]);
@@ -199,7 +199,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
     setMsg(null);
     try {
       const r = await api<{ staged: { kind: string; name: string }[] }>("/team/share", { method: "POST", json: { kind: "agent", name: editing } });
-      setMsg(`Queued for the team: ${r.staged.map((s) => `${s.kind} ${s.name}`).join(", ")}. Open the pull request on the Team page.`);
+      setMsg(`Queued for the team: ${r.staged.map((s) => `${s.kind} ${s.name}`).join(", ")}. Open the pull request in Settings, Team and GitHub.`);
     } catch (e) {
       setIssues([{ path: "", message: (e as Error).message, severity: "error" }]);
     }
@@ -311,10 +311,10 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
           <a key={a.slug} className={`list-item ${a.slug === editing ? "active" : ""}`} href={`#/agents/${a.slug}`} onClick={() => setEditing(a.slug)}>
             <div>
               {a.name} {a.source === "team" && <span className="badge">team</span>}
-              {a.inTeam && <span className="badge" title="Your local copy shadows the team's version">yours · in team</span>}
+              {a.inTeam && <span className="badge" title="Your local copy shadows the team's version">yours, in team</span>}
             </div>
             <div className="sub">
-              {a.slug} · v{a.version}
+              {a.slug}, v{a.version}
             </div>
           </a>
         ))}
@@ -347,7 +347,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
                       className="danger"
                       onClick={async () => {
                         await api("/team/remove", { method: "POST", json: { kind: "agent", name: editing } });
-                        setMsg("Proposed removing this agent from the team. Open the pull request on the Team page.");
+                        setMsg("Proposed removing this agent from the team. Open the pull request in Settings, Team and GitHub.");
                       }}
                     >
                       Propose removal
@@ -365,7 +365,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
               </button>
             </div>
           </div>
-          {msg && <div className="issue" style={{ color: "var(--ok)" }}>{msg}</div>}
+          {msg && <div className="issue ok">{msg}</div>}
           {issues.map((i, n) => (
             <div key={n} className={`issue ${i.severity}`}>
               {i.severity}: {i.path ? `${i.path}: ` : ""}
@@ -514,7 +514,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
               </div>
             </div>
             <div className="field">
-              <span className="muted">MCP tools — from servers configured on the MCP page</span>
+              <span className="muted">MCP tools (servers are set up in Settings, MCP servers)</span>
               <div className="checks">
                 <label title={TOOL_HELP["mcp__*"]}>
                   <input type="checkbox" checked={form.tools.includes("mcp__*")} onChange={() => toggle("tools", "mcp__*")} /> all servers

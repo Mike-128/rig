@@ -7,7 +7,7 @@ Rig is a provider-agnostic agent harness and desktop companion. Register model k
 ```
 packages/core        canonical types, adapters, gateway profiles, the agent engine, built-in tools
 apps/runtime         local daemon: API, loopback proxy, SQLite event log, keychain, scheduler, MCP
-apps/web             React UI: Sessions (the workbench), Agents, Skills, Memory, Team, MCP, Models
+apps/web             React UI: Sessions (the workbench), Agents, Skills, Memory, and Settings
 apps/desktop         Electron shell: window, tray, global hotkey, notifications, folder picker
 apps/cli             rig CLI
 apps/runtime/skills  bundled skills
@@ -44,7 +44,9 @@ If `pnpm desktop` says Electron failed to install, run `pnpm --filter @rig/deskt
 
 ## First steps
 
-1. **Models.** Pick a gateway profile (Anthropic, OpenAI, Google Gemini, an OpenAI-compatible local server, or the APIM template), paste the key, and click *Add and probe*. Entitled models get a green badge. Click *set as default* on one.
+A new install opens with *Connect a model first*; **Settings › Setup** is a checklist of what is configured and what is next.
+
+1. **Connect a provider.** In **Settings › Models**, choose where the models run (Anthropic, OpenAI, Google Gemini, a local OpenAI-compatible server, or the APIM template), paste the key, and click *Connect and test*. Rig sends each known model a tiny request and says, in plain words, which ones the key reaches and what to fix for the rest. The first working model becomes the default; change it under *Default model*.
 2. **Open a project.** In **Sessions**, click *Open a project…* and choose a folder. The session runs the Coder agent there.
 3. **Work.** Describe the task. Coder plans multi-step work as a visible task list, reads and searches the code, shows each edit as a diff, and streams command output as it runs.
 
@@ -62,7 +64,19 @@ If `pnpm desktop` says Electron failed to install, run `pnpm --filter @rig/deskt
 
 **Permissions.** *Ask before changes* asks before every file edit and command. *Accept edits* lets edits through and still asks before commands. *Plan only* blocks anything that changes things, so the agent investigates and proposes. *Auto* runs everything the agent is allowed to use. *Always allow* on a prompt stops asking for that tool, or for that command (`npm test`, `git status`) in shell's case. A chained command never matches a rule.
 
-**Project instructions.** `AGENTS.md`, `CLAUDE.md`, and `RIG.md` in the project folder go into the agent's instructions, so a project set up for Claude Code works unchanged. `~/.rig/RIG.md` holds your own standing instructions for every project.
+**Project instructions.** `AGENTS.md`, `CLAUDE.md`, and `RIG.md` in the project folder go into the agent's instructions, so a project set up for Claude Code works unchanged. Your own standing instructions for every project live in `~/.rig/RIG.md`, edited in **Settings › Your instructions**.
+
+## Settings
+
+| Section | |
+|---|---|
+| Setup | What is configured, what is missing, and the next step. |
+| Models | Providers and their keys, test results, the default model, aliases. |
+| New sessions | The agent a project or a chat starts with, and the starting permission mode (`~/.rig/settings.json`). |
+| Your instructions | `~/.rig/RIG.md`. |
+| Team and GitHub | Sign-in, the team repository, queued changes, pull requests. |
+| MCP servers | `~/.rig/mcp.json`. |
+| About | Version, data folder, where keys are stored, environment variables. |
 
 **Long sessions** compact automatically as the context fills: the conversation is summarized and the agent continues from the summary. `/compact` does it on demand.
 
@@ -108,12 +122,12 @@ Agents with `memory_read` and `memory_write` (Coder has both) keep short notes b
 A small team shares agents, skills, and memory through a GitHub repository. Everyone keeps their own keys and models; agents bind to aliases such as `default`, which each person maps to a model on their own machine.
 
 1. **Create a private repository** for the team, and protect its default branch: require a pull request review before merging. Rig warns if the branch is unprotected. A `CODEOWNERS` file can route agent and memory changes to specific reviewers.
-2. **Sign in** on the **Team** page. Rig acts as you on GitHub, and works with Enterprise Managed Users on github.com or on a data-residency host such as `acme.ghe.com`:
+2. **Sign in** in **Settings › Team and GitHub**. Rig acts as you on GitHub, and works with Enterprise Managed Users on github.com or on a data-residency host such as `acme.ghe.com`:
    - **GitHub CLI** (recommended): run `gh auth login --hostname <host>` once, then click *Use gh sign-in*.
    - **Token**: a fine-grained token for the team repo with Contents and Pull requests set to read and write.
    - **Browser sign-in**: needs the client ID of an OAuth app your enterprise has approved.
 3. **Connect the repository** (`owner/name` or its URL). The first person sets up an empty repo with one click.
-4. **Share.** *Share with team* on an agent or skill, a team memory on the Memory page, or an agent's own `memory_write` to the team: each queues a change. *Open pull request* on the Team page turns the queue into one branch, commit, and pull request in your name. Personal skills an agent uses go with it.
+4. **Share.** *Share with team* on an agent or skill, a team memory on the Memory page, or an agent's own `memory_write` to the team: each queues a change. *Open pull request* in Settings › Team and GitHub turns the queue into one branch, commit, and pull request in your name. Personal skills an agent uses go with it.
 5. **Review on GitHub.** Teammates review and merge as they would any pull request. Rig shows each pull request's review state, and everyone picks up merged changes at startup, every five minutes, or with *Sync now*.
 
 Team agents are read-only on each machine: editing one proposes a change instead of saving it. A personal agent with the same slug shadows the team's, so you can try changes before proposing them.
@@ -122,7 +136,7 @@ The repository holds definitions, not deliverables. Rig reads and writes only `a
 
 ## MCP
 
-Rig connects to Model Context Protocol servers and offers their tools to agents. In the **MCP** page, edit `~/.rig/mcp.json`. It uses the same `mcpServers` format as Claude Code, so entries can be pasted across:
+Rig connects to Model Context Protocol servers and offers their tools to agents. In **Settings › MCP servers**, edit `~/.rig/mcp.json`. It uses the same `mcpServers` format as Claude Code, so entries can be pasted across:
 
 ```json
 {
@@ -166,7 +180,7 @@ pnpm test
 
 The tests use a mock upstream that speaks both dialects, so no keys are needed. They cover the tools, permission modes and rules, the parallel and steerable engine, compaction, the full runtime flow (probe, create, run with approvals, restart, replay), skills from GitHub, a real MCP server over stdio, and two teammates sharing through a mock GitHub: share, review, merge, sync, and run.
 
-The demo includes a mock GitHub for the Team page: paste the token `demo-github-token` and connect `acme/rig-team`. It prints how to approve and merge pull requests as the reviewing teammate.
+`pnpm --filter @rig/runtime demo:fresh` starts the demo as a new install, to try the setup flow; it prints the key to paste. The demo includes a mock GitHub for Settings › Team and GitHub: paste the token `demo-github-token` and connect `acme/rig-team`. It prints how to approve and merge pull requests as the reviewing teammate.
 
 ## License
 

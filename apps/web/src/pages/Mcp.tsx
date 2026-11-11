@@ -75,7 +75,7 @@ export function McpPage() {
           unless the session's mode allows it.
         </div>
         {error && <div className="issue error">{error}</div>}
-        {msg && <div className="issue" style={{ color: "var(--ok)" }}>{msg}</div>}
+        {msg && <div className="issue ok">{msg}</div>}
 
         {info?.servers.map((s) => (
           <div key={s.name} className="card">

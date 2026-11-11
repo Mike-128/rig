@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
 import { AgentsPage } from "./pages/Agents";
-import { ModelsPage } from "./pages/Models";
 import { SkillsPage } from "./pages/Skills";
 import { WorkbenchPage } from "./pages/Workbench";
-import { McpPage } from "./pages/Mcp";
-import { TeamPage } from "./pages/Team";
 import { MemoryPage } from "./pages/Memory";
+import { SETTINGS_SECTIONS, SettingsPage, type SettingsSection } from "./pages/Settings";
 import { api } from "./api";
+import { useSetup } from "./setup";
 
-type Page = "work" | "agents" | "models" | "skills" | "mcp" | "memory" | "team";
+type Page = "work" | "agents" | "skills" | "memory" | "settings";
 
 interface Health {
   ok: boolean;
@@ -16,10 +15,15 @@ interface Health {
   home?: string;
 }
 
+/** Pages that moved into Settings keep their old links. */
+const MOVED: Record<string, SettingsSection> = { models: "models", team: "team", mcp: "mcp" };
+
 function pageFromHash(): { page: Page; param?: string } {
   const h = location.hash.replace(/^#\/?/, "");
   const [p, param] = h.split("/");
-  if (p === "agents" || p === "models" || p === "skills" || p === "mcp" || p === "memory" || p === "team") return { page: p, param };
+  if (p === "agents" || p === "skills" || p === "memory") return { page: p, param };
+  if (p === "settings") return { page: "settings", param: SETTINGS_SECTIONS.some((s) => s.id === param) ? param : "setup" };
+  if (p && MOVED[p]) return { page: "settings", param: MOVED[p] };
   // "chat" is the pre-workbench route; old links keep working.
   if (p === "s" || p === "chat") return { page: "work", param };
   return { page: "work" };
@@ -28,9 +32,13 @@ function pageFromHash(): { page: Page; param?: string } {
 export function App() {
   const [route, setRoute] = useState(pageFromHash());
   const [health, setHealth] = useState<Health | null>(null);
+  const { setup, refresh } = useSetup();
 
   useEffect(() => {
-    const onHash = () => setRoute(pageFromHash());
+    const onHash = () => {
+      setRoute(pageFromHash());
+      refresh();
+    };
     window.addEventListener("hashchange", onHash);
     const check = () =>
       api<Health>("/health")
@@ -42,12 +50,16 @@ export function App() {
       window.removeEventListener("hashchange", onHash);
       clearInterval(id);
     };
-  }, []);
+  }, [refresh]);
+
+  const needsSetup = setup !== null && !setup.ready;
 
   return (
     <div className="app">
       <nav className="nav">
-        <div className="brand">Rig</div>
+        <a className="brand" href="#/s" aria-label="Rig, sessions">
+          Rig
+        </a>
         <a className={route.page === "work" ? "active" : ""} href="#/s">
           Sessions
         </a>
@@ -60,28 +72,21 @@ export function App() {
         <a className={route.page === "memory" ? "active" : ""} href="#/memory">
           Memory
         </a>
-        <a className={route.page === "team" ? "active" : ""} href="#/team">
-          Team
-        </a>
-        <a className={route.page === "mcp" ? "active" : ""} href="#/mcp">
-          MCP
-        </a>
-        <a className={route.page === "models" ? "active" : ""} href="#/models">
-          Models
-        </a>
         <div className="spacer" />
-        <div className={`health ${health?.ok ? "ok" : "bad"}`} title={health ? `secrets: ${health.secrets}` : ""}>
+        <div className={`health ${health === null ? "" : health.ok ? "ok" : "bad"}`} title={health ? `Keys stored in: ${health.secrets}` : ""}>
           {health === null ? "connecting" : health.ok ? "runtime online" : "runtime offline"}
         </div>
+        <a className={`settings-link ${route.page === "settings" ? "active" : ""}`} href={needsSetup ? "#/settings/setup" : "#/settings"}>
+          Settings
+          {needsSetup && <span className="badge rate_limited">set up</span>}
+        </a>
       </nav>
       <main className="main">
-        {route.page === "work" && <WorkbenchPage sessionId={route.param || undefined} home={health?.home} />}
+        {route.page === "work" && <WorkbenchPage sessionId={route.param || undefined} home={health?.home} ready={setup?.ready} />}
         {route.page === "agents" && <AgentsPage initialSlug={route.param} />}
         {route.page === "skills" && <SkillsPage initialName={route.param} />}
-        {route.page === "models" && <ModelsPage />}
-        {route.page === "mcp" && <McpPage />}
         {route.page === "memory" && <MemoryPage />}
-        {route.page === "team" && <TeamPage />}
+        {route.page === "settings" && <SettingsPage section={(route.param ?? "setup") as SettingsSection} />}
       </main>
     </div>
   );

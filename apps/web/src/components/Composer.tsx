@@ -89,7 +89,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(prop
         .filter((c) => c.name.toLowerCase().includes(q))
         .sort((a, b) => Number(!a.name.startsWith(q)) - Number(!b.name.startsWith(q)))
         .slice(0, 12)
-        .map((c) => ({ label: `/${c.name}`, detail: `${c.kind === "skill" ? "skill · " : ""}${c.description}`, insert: `/${c.name} ` }));
+        .map((c) => ({ label: `/${c.name}`, detail: `${c.kind === "skill" ? "Skill: " : ""}${c.description}`, insert: `/${c.name} ` }));
       setMenu(items.length ? { kind: "slash", start: 0, items, index: 0 } : null);
       return;
     }

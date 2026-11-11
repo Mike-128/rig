@@ -93,7 +93,7 @@ export function sessionRoutes(app: AppContext): Hono {
       agentVersion: agent.version,
       workspace,
       title: b.title ?? "New session",
-      mode: b.mode,
+      mode: b.mode ?? app.settings.get().defaultMode,
     });
     return c.json(session, 201);
   });

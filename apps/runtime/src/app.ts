@@ -26,6 +26,8 @@ import { TeamManager } from "./team";
 import { MemoryStore } from "./stores/memory";
 import { teamRoutes } from "./routes/team";
 import { memoryRoutes } from "./routes/memory";
+import { RIG_VERSION, settingsRoutes } from "./routes/settings";
+import { SettingsStore } from "./stores/settings";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 
 export interface BuiltApp {
@@ -69,6 +71,7 @@ export async function buildApp(overrides: Partial<RuntimeConfig> = {}, opts: Bui
     github,
     team,
     memory: new MemoryStore(path.join(config.home, "memory"), () => team.repoDir()),
+    settings: new SettingsStore(config.home),
   };
   runs.attach(app);
   runs.extraTools = () => app.mcp.tools();
@@ -85,7 +88,7 @@ export async function buildApp(overrides: Partial<RuntimeConfig> = {}, opts: Bui
 
   const hono = new Hono();
   hono.use("/api/*", cors({ origin: (o) => (o && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o) ? o : ""), credentials: false }));
-  hono.get("/api/health", (c) => c.json({ ok: true, secrets: secrets.backend, home: config.home, version: "0.4.0", skills: app.skills.list().length }));
+  hono.get("/api/health", (c) => c.json({ ok: true, secrets: secrets.backend, home: config.home, version: RIG_VERSION, skills: app.skills.list().length }));
   hono.route("/proxy", proxyRoutes(app));
   hono.route("/api", catalogRoutes(app));
   hono.route("/api/agents", agentRoutes(app));
@@ -94,6 +97,7 @@ export async function buildApp(overrides: Partial<RuntimeConfig> = {}, opts: Bui
   hono.route("/api/mcp", mcpRoutes(app));
   hono.route("/api", teamRoutes(app));
   hono.route("/api/memory", memoryRoutes(app));
+  hono.route("/api", settingsRoutes(app));
   hono.onError((err, c) => {
     console.error("[rig] unhandled", err);
     return c.json({ error: err.message }, 500);

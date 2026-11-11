@@ -6,6 +6,8 @@
  *
  * The mock "model" picks tools from keywords in your message: read, edit, run, find, plan,
  * delegate, skill. Anything else gets an echo. Nothing here touches ~/.rig.
+ *
+ * `demo:fresh` (or RIG_DEMO_FRESH=1) starts it like a new install, with no provider connected, to try Settings > Setup.
  */
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -40,11 +42,16 @@ const rt = await startServer({ home, port }, { fileSecrets: true, github: { apiB
 serveWebUi(rt.hono);
 const api = (p: string, body: unknown, method = "POST") =>
   fetch(`http://127.0.0.1:${rt.port}/api${p}`, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
-const conn = (await api("/connections", { name: "mock", profileId: "mock-gateway", key: GOOD_KEY })) as { connection: { id: string } };
-await api("/aliases/default", { connectionId: conn.connection.id, modelId: "mock-claude" }, "PUT");
-await api("/sessions", { agent: "coder", workspace: project, title: "Demo project" });
+const fresh = Boolean(process.env.RIG_DEMO_FRESH) || process.argv.includes("--fresh");
+if (!fresh) {
+  const conn = (await api("/connections", { name: "mock", profileId: "mock-gateway", key: GOOD_KEY })) as { connection: { id: string } };
+  await api("/aliases/default", { connectionId: conn.connection.id, modelId: "mock-claude" }, "PUT");
+  await api("/sessions", { agent: "coder", workspace: project, title: "Demo project" });
+}
 
 console.log(`\n  Rig demo on http://127.0.0.1:${rt.port}\n  home    ${home}\n  project ${project}\n`);
+if (fresh) console.log(`  Fresh install: in Settings > Models choose "Mock gateway (demo)" and paste the key "${GOOD_KEY}".
+`);
 console.log("  Try: read hello.txt · edit it · run the tests · find files · plan this · delegate a search\n");
-console.log('  Team (mock GitHub): on the Team page paste the token "demo-github-token" and connect "acme/rig-team".');
+console.log('  Team (mock GitHub): in Settings, Team and GitHub, paste the token "demo-github-token" and connect "acme/rig-team".');
 console.log(`  To act as the reviewing teammate: POST ${github.url}/__approve/<pr> or ${github.url}/__merge/<pr>\n`);
