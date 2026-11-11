@@ -1,42 +1,71 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Connection, GatewayProfile, Model, ModelAlias } from "@rig/core/types";
 import { api } from "../api";
+import { announceSetupChange, STATUS_HELP, STATUS_LABEL, useSetup } from "../setup";
 import { ConnectionSettings, HeaderFields, headerRecord, type HeaderRow } from "../ConnectionSettings";
 
 type ModelRow = Model & { connectionName: string };
 const emptyManual = { id: "", displayName: "", dialect: "openai.chat", route: "", bodyModel: "", maxTokensField: "max_tokens", reasoning: false, query: "{}" };
+
+/** Statuses that say the model cannot be used; anything else may still work. */
+const BROKEN = new Set(["unauthorized", "forbidden", "not_found"]);
+
+/** One sentence per probe, turning the per-model results into what to do next. */
+function findings(rows: Model[], listError?: string, found?: number): string[] {
+  const tested = rows.filter((m) => m.status !== "listed" && m.status !== "unprobed");
+  const count = (s: string) => tested.filter((m) => m.status === s).length;
+  const out: string[] = [];
+  if (!tested.length) out.push("Nothing was tested. Add a model manually, or use List and test.");
+  else if (count("entitled") === tested.length) out.push(tested.length === 1 ? "The tested model is reachable with this key." : `All ${tested.length} tested models are reachable with this key.`);
+  else if (count("entitled")) out.push(`${count("entitled")} of ${tested.length} tested models are reachable with this key.`);
+  if (count("entitled")) out.push("Reachable includes a request the provider rejected only for validation, so send a chat before relying on a model.");
+  if (tested.length && count("unauthorized") === tested.length) out.push("The provider rejected the key for every model: check the key, and the header it is sent in (Advanced).");
+  else if (count("unauthorized")) out.push(`${count("unauthorized")} rejected the key.`);
+  if (count("forbidden")) out.push(`${count("forbidden")} answered "not allowed": the key works but has no access to ${count("forbidden") === 1 ? "that model" : "those models"}.`);
+  if (count("not_found")) out.push(`${count("not_found")} were not found: check the base URL, the route, and the model ids.`);
+  if (count("rate_limited")) out.push(`${count("rate_limited")} were rate limited. Test them again in a minute.`);
+  if (found !== undefined) out.push(`The listing returned ${found} unique id${found === 1 ? "" : "s"}.`);
+  if (listError) out.push(`Discovery: ${listError}`);
+  return out;
+}
 
 export function ModelsPage() {
   const [profiles, setProfiles] = useState<GatewayProfile[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [models, setModels] = useState<ModelRow[]>([]);
   const [aliases, setAliases] = useState<ModelAlias[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  const [name, setName] = useState("");
-  const [profileId, setProfileId] = useState("google-gemini");
-  const [key, setKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
-  const [headerName, setHeaderName] = useState("");
-  const [headers, setHeaders] = useState<HeaderRow[]>([]);
-  const [settingsFor, setSettingsFor] = useState<string | null>(null);
+  const [report, setReport] = useState<{ connection: string; lines: string[] } | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const [manualFor, setManualFor] = useState<string | null>(null);
   const [manual, setManual] = useState(emptyManual);
-  const [editing, setEditing] = useState<ModelRow | null>(null);
+  const [editingModel, setEditingModel] = useState<ModelRow | null>(null);
   const [savingManual, setSavingManual] = useState(false);
+  const [settingsFor, setSettingsFor] = useState<string | null>(null);
 
-  function editManual(model: ModelRow) {
+  function editManual(m: ModelRow) {
     setError(null);
-    setNotice(null);
-    setEditing(model);
-    setManualFor(model.connectionId);
-    setManual({ id: model.providerModelId, displayName: model.displayName, dialect: model.dialect, route: model.route,
-      bodyModel: model.bodyModel === model.providerModelId ? "" : model.bodyModel,
-      maxTokensField: model.params?.maxTokensField ?? "max_tokens", reasoning: model.capabilities.reasoning,
-      query: JSON.stringify(model.query ?? {}, null, 2) });
+    setEditingModel(m);
+    setManualFor(m.connectionId);
+    setManual({
+      id: m.providerModelId,
+      displayName: m.displayName,
+      dialect: m.dialect,
+      route: m.route,
+      bodyModel: m.bodyModel === m.providerModelId ? "" : (m.bodyModel ?? ""),
+      maxTokensField: m.params?.maxTokensField ?? "max_tokens",
+      reasoning: Boolean(m.capabilities?.reasoning),
+      query: JSON.stringify(m.query ?? {}, null, 2),
+    });
+  }
+
+  function closeManual() {
+    setManualFor(null);
+    setEditingModel(null);
+    setManual(emptyManual);
   }
 
   const refresh = async () => {
@@ -50,43 +79,44 @@ export function ModelsPage() {
     setConnections(c);
     setModels(m);
     setAliases(a);
+    setLoaded(true);
+    announceSetupChange();
+    return { models: m, aliases: a };
   };
 
   useEffect(() => {
     refresh().catch((e) => setError(e.message));
   }, []);
 
-  const profile = profiles.find((p) => p.id === profileId);
+  const defaultAlias = aliases.find((a) => a.alias === "default");
+  const usable = models.filter((m) => !BROKEN.has(m.status));
 
-  async function addConnection() {
+  async function setAlias(alias: string, connectionId: string, modelId: string) {
     setError(null);
-    setNotice(null);
-    setBusy("add");
     try {
-      const res = await api<{ connection: Connection }>("/connections", {
-        method: "POST",
-        json: { name, profileId, key, baseUrl: baseUrl || undefined, headerName: headerName || undefined, extraHeaders: headerRecord(headers) },
-      });
-      setKey("");
-      setName("");
+      await api(`/aliases/${encodeURIComponent(alias)}`, { method: "PUT", json: { connectionId, modelId } });
       await refresh();
-      await probe(res.connection.id);
     } catch (e) {
       setError((e as Error).message);
-    } finally {
-      setBusy(null);
     }
   }
 
-  async function probe(connId: string, includeListed = false) {
-    setBusy(connId);
+  async function probe(conn: Connection, includeListed = false) {
+    setBusy(conn.id);
     setError(null);
-    setNotice("Listing inventory and probing models… This may take time for large inventories.");
     try {
-      const res = await api<{ models: Model[]; listed: number; found?: number; listError?: string }>(`/connections/${connId}/probe?includeListed=${includeListed}`, { method: "POST" });
-      const entitled = res.models.filter((m) => m.status === "entitled").length;
-      setNotice(`Checked ${res.models.filter((m) => includeListed || m.origin !== "listed").length} known models: ${entitled} entitled. ${res.found === undefined ? "" : `Listing returned ${res.found} unique IDs. `}${res.listed} new models added; existing models keep their settings. ${includeListed ? "Listed models were also probed." : "Use Scan inventory to probe listed models too."} Entitled includes validation errors: review Detail and test a chat. ${res.listError ? `Discovery: ${res.listError}` : "Inventory is limited to what the gateway exposes."}`);
-      await refresh();
+      const res = await api<{ models: Model[]; listed: number; found?: number; listError?: string }>(`/connections/${conn.id}/probe?includeListed=${includeListed}`, { method: "POST" });
+      const lines = findings(includeListed ? res.models : res.models.filter((m) => m.origin !== "listed"), res.listError, res.found);
+      if (res.listed) lines.push(`${res.listed} new model${res.listed === 1 ? " was" : "s were"} added from the listing; models you already had keep their settings.${includeListed ? "" : " Scan inventory tests them too."}`);
+      const hadDefault = aliases.some((a) => a.alias === "default");
+      const after = await refresh();
+      // The runtime binds the default to a working model when there is none; say which it chose.
+      const bound = after.aliases.find((a) => a.alias === "default");
+      if (!hadDefault && bound) {
+        const m = after.models.find((x) => x.connectionId === bound.connectionId && x.providerModelId === bound.modelId);
+        lines.push(`${m?.displayName ?? bound.modelId} is now the default model. Change it below.`);
+      }
+      setReport({ connection: conn.name, lines });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -106,13 +136,9 @@ export function ModelsPage() {
     }
   }
 
-  async function removeConnection(id: string) {
-    await api(`/connections/${id}`, { method: "DELETE" });
-    await refresh();
-  }
-
-  async function setAlias(alias: string, m: ModelRow) {
-    await api(`/aliases/${encodeURIComponent(alias)}`, { method: "PUT", json: { connectionId: m.connectionId, modelId: m.providerModelId } });
+  async function removeConnection(c: Connection) {
+    if (!confirm(`Remove ${c.name}? Its key is deleted from the keychain, and agents bound to its models stop working.`)) return;
+    await api(`/connections/${c.id}`, { method: "DELETE" });
     await refresh();
   }
 
@@ -121,27 +147,33 @@ export function ModelsPage() {
     await refresh();
   }
 
-  async function addManual() {
+  async function saveManual() {
     if (!manualFor) return;
     setError(null);
     setSavingManual(true);
     try {
       let query: unknown;
-      try { query = JSON.parse(manual.query || "{}"); } catch { throw new Error("Query parameters must be a JSON object, for example {\"api-version\":\"2024-12-01-preview\"}."); }
+      try {
+        query = JSON.parse(manual.query || "{}");
+      } catch {
+        throw new Error('Query parameters must be a JSON object, for example {"api-version":"2024-12-01-preview"}.');
+      }
       if (!query || typeof query !== "object" || Array.isArray(query) || Object.values(query).some((v) => typeof v !== "string")) {
         throw new Error("Query parameters must be an object with string values.");
       }
       const { id, ...fields } = manual;
-      await api(editing ? `/models/${encodeURIComponent(manualFor)}/${encodeURIComponent(editing.providerModelId)}` : `/connections/${manualFor}/models`, {
-        method: editing ? "PATCH" : "POST",
-        json: { ...fields, ...(editing ? {} : { id }), query,
-          displayName: manual.displayName || (editing ? "" : undefined),
-          bodyModel: manual.bodyModel || (editing ? "" : undefined) },
+      await api(editingModel ? `/models/${encodeURIComponent(manualFor)}/${encodeURIComponent(editingModel.providerModelId)}` : `/connections/${manualFor}/models`, {
+        method: editingModel ? "PATCH" : "POST",
+        json: {
+          ...fields,
+          ...(editingModel ? {} : { id }),
+          query,
+          displayName: manual.displayName || (editingModel ? "" : undefined),
+          bodyModel: manual.bodyModel || (editingModel ? "" : undefined),
+        },
       });
-      setManualFor(null);
-      setManual(emptyManual);
-      setEditing(null);
-      setNotice(editing ? "Model saved. Probe it again to check the updated configuration." : "Model added. Probe it to check access.");
+      setReport({ connection: connections.find((c) => c.id === manualFor)?.name ?? "", lines: [editingModel ? "Model saved. Test it again to check the new settings." : "Model added. Test it to check access."] });
+      closeManual();
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -150,239 +182,450 @@ export function ModelsPage() {
     }
   }
 
-  const defaultAlias = aliases.find((a) => a.alias === "default");
+  const showAdd = adding || (loaded && connections.length === 0);
 
   return (
     <div className="content">
       <div className="scroll">
-        <h2 style={{ marginTop: 0 }}>Model Catalog</h2>
-        {error && <div className="issue error">{error}</div>}
-        {notice && <div className="issue" style={{ color: "var(--ok)" }}>{notice}</div>}
-
-        <div className="card">
-          <h3>Add a connection</h3>
-          <div className="grid2">
-            <label className="field">
-              <span>Gateway profile</span>
-              <select value={profileId} onChange={(e) => setProfileId(e.target.value)}>
-                {profiles.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.displayName}
-                  </option>
-                ))}
-              </select>
-              {profile && <span className="muted">{profile.description}</span>}
-            </label>
-            <label className="field">
-              <span>Connection name</span>
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. gemini-personal" />
-            </label>
+        <div className="page">
+          <div className="page-head">
+            <div>
+              <h2>Models</h2>
+              <p className="muted">
+                A provider is where models run: Anthropic, OpenAI, Google, a gateway, or a server on your machine. Agents ask for an alias such as <span className="mono">default</span>, and you decide here which model answers it.
+              </p>
+            </div>
+            {!showAdd && (
+              <button className="primary" onClick={() => setAdding(true)}>
+                Add a provider
+              </button>
+            )}
           </div>
-          <label className="field">
-            <span>Key (stored in the OS keychain, never shown again)</span>
-            <input type="password" value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" />
-          </label>
-          <div className="grid2">
-            <label className="field">
-              <span>Base URL override {profile ? `(default ${profile.baseUrl})` : ""}</span>
-              <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={profile?.template ? "required for templates" : "optional"} />
-            </label>
-            <label className="field">
-              <span>Auth header override {profile ? `(default ${profile.auth.headerName})` : ""}</span>
-              <input value={headerName} onChange={(e) => setHeaderName(e.target.value)} placeholder="optional" />
-            </label>
-          </div>
-          <HeaderFields rows={headers} onChange={setHeaders} />
-          <button className="primary" onClick={addConnection} disabled={!name.trim() || !key.trim() || busy === "add"}>
-            {busy === "add" ? "Adding and probing…" : "Add and probe"}
-          </button>
-        </div>
-
-        {connections.length === 0 && <div className="empty">No connections yet. Add one above.</div>}
-
-        {connections.map((c) => {
-          const rows = models.filter((m) => m.connectionId === c.id);
-          return (
-            <div className="card" key={c.id}>
-              <div className="row" style={{ justifyContent: "space-between" }}>
-                <div>
-                  <strong>{c.name}</strong> <span className="badge">{c.kind}</span> <span className="muted mono">{c.baseUrl}</span>{" "}
-                  <span className="muted">
-                    · {c.auth.headerName} · key …{c.secretLast4}
-                  </span>
-                </div>
-                <div className="row">
-                  <button onClick={() => setSettingsFor(settingsFor === c.id ? null : c.id)} disabled={busy !== null}>Connection settings</button>
-                  <button title="Lists and probes known and newly listed models; may incur provider usage" onClick={() => probe(c.id, true)} disabled={busy !== null}>Scan inventory</button>
-                  <button onClick={() => probe(c.id)} disabled={busy === c.id}>
-                    {busy === c.id ? "Probing…" : "List and probe"}
-                  </button>
-                  <button disabled={savingManual} onClick={() => { setEditing(null); setManual(emptyManual); setManualFor(manualFor === c.id && !editing ? null : c.id); }}>Add model manually</button>
-                  <button className="danger" onClick={() => removeConnection(c.id)}>
-                    Remove
-                  </button>
-                </div>
+          {error && <div className="issue error">{error}</div>}
+          {report && (
+            <div className="findings" role="status">
+              <div className="findings-head">
+                <strong>Tested {report.connection}</strong>
+                <button className="ghost tiny" onClick={() => setReport(null)}>
+                  Dismiss
+                </button>
               </div>
-              <p className="muted">Scan inventory sends probe requests and may incur usage. Listed IDs and validation-only entitlement are not proof of a working chat.</p>
-              {settingsFor === c.id && <ConnectionSettings key={c.id} connection={c} onSaved={refresh} onClose={() => setSettingsFor(null)} />}
-              {manualFor === c.id && (
-                <div className="card" style={{ marginTop: 10 }}>
-                  <h3>{editing ? "Edit manual model" : "Add manual model"}</h3>
-                  <div className="grid2">
-                    <label className="field">
-                      <span>Model id (sent in the body unless overridden)</span>
-                      <input disabled={!!editing || savingManual} value={manual.id} onChange={(e) => setManual({ ...manual, id: e.target.value })} />
-                      {editing && <span className="muted">The saved ID stays fixed so agents and aliases keep working. Change the deployment in Route or the request model in Body model override.</span>}
-                    </label>
-                    <label className="field">
-                      <span>Display name (optional)</span>
-                      <input value={manual.displayName} onChange={(e) => setManual({ ...manual, displayName: e.target.value })} />
-                    </label>
-                    <label className="field">
-                      <span>Dialect</span>
-                      <select value={manual.dialect} onChange={(e) => setManual({ ...manual, dialect: e.target.value })}>
-                        <option value="openai.chat">openai.chat</option>
-                        <option value="anthropic.messages">anthropic.messages</option>
-                      </select>
-                    </label>
-                    <label className="field">
-                      <span>Route (path appended to base URL)</span>
-                      <input value={manual.route} onChange={(e) => setManual({ ...manual, route: e.target.value })} placeholder="/v1/chat/completions" />
-                    </label>
-                    <label className="field">
-                      <span>Body model override (optional)</span>
-                      <input value={manual.bodyModel} onChange={(e) => setManual({ ...manual, bodyModel: e.target.value })} />
-                    </label>
-                    <label className="field">
-                      <span>Max tokens field (OpenAI dialect)</span>
-                      <select value={manual.maxTokensField} onChange={(e) => setManual({ ...manual, maxTokensField: e.target.value })}>
-                        <option value="max_tokens">max_tokens</option>
-                        <option value="max_completion_tokens">max_completion_tokens</option>
-                      </select>
-                    </label>
-                    <label className="field checks">
-                      <input type="checkbox" checked={manual.reasoning} onChange={(e) => setManual({ ...manual, reasoning: e.target.checked })} /> supports reasoning effort
-                    </label>
-                  </div>
-                  <label className="field">
-                    <span>Query parameters (JSON string values)</span>
-                    <textarea value={manual.query} onChange={(e) => setManual({ ...manual, query: e.target.value })} placeholder={'{"api-version":"2024-12-01-preview"}'} />
-                    <span className="muted">Use {"{}"} for none. These values override matching query parameters in Route.</span>
-                  </label>
-                  <button className="primary" onClick={addManual} disabled={!manual.id.trim() || !manual.route.trim() || savingManual}>
-                    {savingManual ? "Saving…" : editing ? "Save changes" : "Add model"}
-                  </button>
-                  <button disabled={savingManual} onClick={() => { setManualFor(null); setEditing(null); setManual(emptyManual); }}>Cancel</button>
-                </div>
+              <ul>
+                {report.lines.map((l) => (
+                  <li key={l}>{l}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {showAdd && (
+            <AddProvider
+              profiles={profiles}
+              existing={connections}
+              onCancel={connections.length ? () => setAdding(false) : undefined}
+              onAdded={async (conn) => {
+                setAdding(false);
+                await refresh();
+                await probe(conn);
+              }}
+            />
+          )}
+
+          {connections.length > 0 && (
+            <section className="card">
+              <h3>Default model</h3>
+              <p className="muted small">Agents bound to the alias default use this model. Each teammate picks their own, so shared agents run on whatever each person has.</p>
+              <div className="row">
+                <select
+                  className="grow"
+                  value={defaultAlias ? `${defaultAlias.connectionId}\n${defaultAlias.modelId}` : ""}
+                  onChange={(e) => {
+                    const [c, m] = e.target.value.split("\n");
+                    if (c && m) setAlias("default", c, m);
+                  }}
+                >
+                  {!defaultAlias && <option value="">Choose a model…</option>}
+                  {connections.map((c) => (
+                    <optgroup key={c.id} label={c.name}>
+                      {usable
+                        .filter((m) => m.connectionId === c.id)
+                        .map((m) => (
+                          <option key={m.id} value={`${m.connectionId}\n${m.providerModelId}`}>
+                            {m.displayName} ({STATUS_LABEL[m.status] ?? m.status})
+                          </option>
+                        ))}
+                    </optgroup>
+                  ))}
+                </select>
+              </div>
+              {defaultAlias && BROKEN.has(models.find((m) => m.connectionId === defaultAlias.connectionId && m.providerModelId === defaultAlias.modelId)?.status ?? "") && (
+                <div className="issue error">The default model failed its last test. Pick another, or fix its provider below.</div>
               )}
-              <table style={{ marginTop: 10 }}>
-                <thead>
-                  <tr>
-                    <th>Model</th>
-                    <th>Dialect</th>
-                    <th>Status</th>
-                    <th>Detail</th>
-                    <th>Alias</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((m) => {
-                    const boundAliases = aliases.filter((a) => a.connectionId === m.connectionId && a.modelId === m.providerModelId).map((a) => a.alias);
-                    return (
-                      <tr key={m.id}>
-                        <td>
-                          {m.displayName}
-                          <div className="muted mono">
-                            {m.providerModelId} · {m.route}
-                          </div>
-                        </td>
-                        <td className="mono">{m.dialect}</td>
-                        <td>
-                          <span className={`badge ${m.status}`}>{m.status}</span>
-                        </td>
-                        <td className="muted" style={{ maxWidth: 320 }}>
-                          {m.statusMessage}
-                        </td>
-                        <td>
-                          {boundAliases.map((a) => (
-                            <span key={a} className="badge" style={{ marginRight: 4 }}>
-                              {a}
+              {!usable.length && <div className="issue warning">No model has passed a test yet. Use List and test on a provider below.</div>}
+            </section>
+          )}
+
+          {connections.map((c) => {
+            const rows = models.filter((m) => m.connectionId === c.id);
+            return (
+              <section className="card" key={c.id}>
+                <div className="card-head">
+                  <div className="titles">
+                    <h3>
+                      {c.name} <span className="badge">{c.kind}</span>
+                    </h3>
+                    <div className="muted small">
+                      <span className="mono">{c.baseUrl}</span>, key in {c.auth.headerName} ending <span className="mono">{c.secretLast4}</span>
+                    </div>
+                  </div>
+                  <div className="row">
+                    <button onClick={() => probe(c)} disabled={busy !== null}>
+                      {busy === c.id ? "Testing…" : "List and test"}
+                    </button>
+                    <button onClick={() => probe(c, true)} disabled={busy !== null} title="Lists the provider's models and tests every one, including newly listed ones. May incur usage.">
+                      Scan inventory
+                    </button>
+                    <button onClick={() => setSettingsFor(settingsFor === c.id ? null : c.id)} aria-expanded={settingsFor === c.id}>
+                      Connection settings
+                    </button>
+                    <button
+                      disabled={savingManual}
+                      onClick={() => {
+                        if (manualFor === c.id && !editingModel) closeManual();
+                        else {
+                          setEditingModel(null);
+                          setManual(emptyManual);
+                          setManualFor(c.id);
+                        }
+                      }}
+                    >
+                      Add a model by id
+                    </button>
+                    <button className="danger" onClick={() => removeConnection(c)}>
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                {settingsFor === c.id && (
+                  <ConnectionSettings
+                    key={c.id}
+                    connection={c}
+                    onSaved={async () => {
+                      await refresh();
+                    }}
+                    onClose={() => setSettingsFor(null)}
+                  />
+                )}
+                {manualFor === c.id && (
+                  <div className="subsection">
+                    <h4>{editingModel ? `Edit ${editingModel.displayName}` : "Add a model by id"}</h4>
+                    <div className="grid2">
+                      <label className="field">
+                        <span>Model id</span>
+                        <input value={manual.id} disabled={!!editingModel || savingManual} onChange={(e) => setManual({ ...manual, id: e.target.value })} placeholder="e.g. llama3.1:8b" />
+                        <span className="hint">
+                          {editingModel
+                            ? "The id stays fixed so agents and aliases keep working. Change the deployment in Route, or the request model below."
+                            : "Sent in the request body unless you override it below."}
+                        </span>
+                      </label>
+                      <label className="field">
+                        <span>Display name (optional)</span>
+                        <input value={manual.displayName} onChange={(e) => setManual({ ...manual, displayName: e.target.value })} />
+                      </label>
+                      <label className="field">
+                        <span>Dialect</span>
+                        <select value={manual.dialect} onChange={(e) => setManual({ ...manual, dialect: e.target.value })}>
+                          <option value="openai.chat">OpenAI Chat Completions</option>
+                          <option value="anthropic.messages">Anthropic Messages</option>
+                        </select>
+                      </label>
+                      <label className="field">
+                        <span>Route</span>
+                        <input value={manual.route} onChange={(e) => setManual({ ...manual, route: e.target.value })} placeholder={manual.dialect === "openai.chat" ? "/v1/chat/completions" : "/v1/messages"} />
+                        <span className="hint">The path added to the base URL.</span>
+                      </label>
+                      <label className="field">
+                        <span>Model id in the body (optional)</span>
+                        <input value={manual.bodyModel} onChange={(e) => setManual({ ...manual, bodyModel: e.target.value })} />
+                        <span className="hint">For gateways whose deployment name differs from the model id.</span>
+                      </label>
+                      {manual.dialect === "openai.chat" && (
+                        <label className="field">
+                          <span>Max tokens field</span>
+                          <select value={manual.maxTokensField} onChange={(e) => setManual({ ...manual, maxTokensField: e.target.value })}>
+                            <option value="max_tokens">max_tokens</option>
+                            <option value="max_completion_tokens">max_completion_tokens (newer OpenAI models)</option>
+                          </select>
+                        </label>
+                      )}
+                      <label className="field checks">
+                        <input type="checkbox" checked={manual.reasoning} onChange={(e) => setManual({ ...manual, reasoning: e.target.checked })} /> Supports a reasoning effort setting
+                      </label>
+                    </div>
+                    <label className="field">
+                      <span>Query parameters (JSON, string values)</span>
+                      <textarea value={manual.query} onChange={(e) => setManual({ ...manual, query: e.target.value })} placeholder={'{"api-version":"2024-12-01-preview"}'} spellCheck={false} />
+                      <span className="hint">Use {"{}"} for none. These override matching query parameters in Route.</span>
+                    </label>
+                    <div className="row">
+                      <button className="primary" onClick={saveManual} disabled={!manual.id.trim() || !manual.route.trim() || savingManual}>
+                        {savingManual ? "Saving…" : editingModel ? "Save changes" : "Add model"}
+                      </button>
+                      <button className="ghost" disabled={savingManual} onClick={closeManual}>
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Model</th>
+                      <th>Dialect</th>
+                      <th>Test result</th>
+                      <th>Detail</th>
+                      <th>Aliases</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((m) => {
+                      const bound = aliases.filter((a) => a.connectionId === m.connectionId && a.modelId === m.providerModelId).map((a) => a.alias);
+                      return (
+                        <tr key={m.id}>
+                          <td>
+                            {m.displayName}
+                            <div className="muted mono">
+                              {m.providerModelId} on {m.route}
+                            </div>
+                          </td>
+                          <td className="mono">{m.dialect}</td>
+                          <td>
+                            <span className={`badge ${m.status}`} title={STATUS_HELP[m.status]}>
+                              {STATUS_LABEL[m.status] ?? m.status}
                             </span>
-                          ))}
-                          {m.status === "entitled" && !boundAliases.includes("default") && (
-                            <button onClick={() => setAlias("default", m)} title={defaultAlias ? `replaces ${defaultAlias.modelId}` : ""}>
-                              set as default
-                            </button>
-                          )}
-                          {m.status === "entitled" && (
-                            <button
-                              style={{ marginLeft: 4 }}
-                              onClick={() => {
-                                const a = prompt("Alias name (e.g. fast, smart)");
-                                if (a) setAlias(a.trim(), m);
-                              }}
-                            >
-                              alias…
-                            </button>
-                          )}
-                        </td>
-                        <td>
-                          {m.origin === "manual" && <button disabled={savingManual || busy !== null} onClick={() => editManual(m)}>Edit</button>}{" "}
-                          <button onClick={() => probeOne(m)} disabled={busy === m.id}>
-                            {busy === m.id ? "…" : "probe"}
-                          </button>{" "}
-                          <button className="danger" onClick={() => removeModel(m)}>
-                            ×
-                          </button>
+                          </td>
+                          <td className="muted detail">{m.statusMessage}</td>
+                          <td>
+                            <div className="row tight">
+                              {bound.map((a) => (
+                                <span key={a} className="badge">
+                                  {a}
+                                </span>
+                              ))}
+                              {!BROKEN.has(m.status) && (
+                                <button
+                                  className="tiny"
+                                  onClick={() => {
+                                    const a = prompt("Alias name, e.g. fast or smart. Agents can ask for it instead of a model.");
+                                    if (a?.trim()) setAlias(a.trim(), m.connectionId, m.providerModelId);
+                                  }}
+                                >
+                                  Add alias
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="row tight end">
+                              {m.origin === "manual" && (
+                                <button className="tiny" disabled={savingManual || busy !== null} onClick={() => editManual(m)}>
+                                  Edit
+                                </button>
+                              )}
+                              <button className="tiny" onClick={() => probeOne(m)} disabled={busy === m.id}>
+                                {busy === m.id ? "Testing…" : "Test"}
+                              </button>
+                              <button className="tiny danger" onClick={() => removeModel(m)} aria-label={`Remove ${m.displayName}`}>
+                                Remove
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {!rows.length && (
+                      <tr>
+                        <td colSpan={6} className="muted">
+                          No models yet. Use List and test, or add a model by id.
                         </td>
                       </tr>
-                    );
-                  })}
-                  {!rows.length && (
-                    <tr>
-                      <td colSpan={6} className="muted">
-                        No models. Use "List and probe" or add one manually.
+                    )}
+                  </tbody>
+                </table>
+              </section>
+            );
+          })}
+
+          {aliases.length > 0 && (
+            <section className="card">
+              <h3>Aliases</h3>
+              <p className="muted small">Names agents use instead of a specific model. They live on this machine only.</p>
+              <table>
+                <tbody>
+                  {aliases.map((a) => (
+                    <tr key={a.alias}>
+                      <td>
+                        <strong>{a.alias}</strong>
+                      </td>
+                      <td className="mono">
+                        {connections.find((c) => c.id === a.connectionId)?.name ?? a.connectionId} / {a.modelId}
+                      </td>
+                      <td className="end-cell">
+                        <button
+                          className="tiny danger"
+                          onClick={async () => {
+                            await api(`/aliases/${encodeURIComponent(a.alias)}`, { method: "DELETE" });
+                            refresh();
+                          }}
+                        >
+                          Remove
+                        </button>
                       </td>
                     </tr>
-                  )}
+                  ))}
                 </tbody>
               </table>
-            </div>
-          );
-        })}
-
-        {aliases.length > 0 && (
-          <div className="card">
-            <h3>Aliases</h3>
-            <table>
-              <tbody>
-                {aliases.map((a) => (
-                  <tr key={a.alias}>
-                    <td>
-                      <strong>{a.alias}</strong>
-                    </td>
-                    <td className="mono">
-                      {connections.find((c) => c.id === a.connectionId)?.name ?? a.connectionId} / {a.modelId}
-                    </td>
-                    <td>
-                      <button
-                        className="danger"
-                        onClick={async () => {
-                          await api(`/aliases/${encodeURIComponent(a.alias)}`, { method: "DELETE" });
-                          refresh();
-                        }}
-                      >
-                        remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+            </section>
+          )}
+        </div>
       </div>
     </div>
+  );
+}
+
+/** The add-a-provider form, in rig-probe's shape: a preset first, then only the fields it needs. */
+function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: GatewayProfile[]; existing: Connection[]; onAdded(c: Connection): void; onCancel?: () => void }) {
+  const [profileId, setProfileId] = useState("");
+  const [key, setKey] = useState("");
+  const [reveal, setReveal] = useState(false);
+  const [name, setName] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
+  const [headerName, setHeaderName] = useState("");
+  const [headers, setHeaders] = useState<HeaderRow[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { setup } = useSetup();
+  const storedIn = setup?.secrets === "os-keychain" ? "your OS keychain" : "an encrypted file in Rig's data folder (the OS keychain was not available)";
+
+  const profile = profiles.find((p) => p.id === (profileId || profiles[0]?.id));
+  const local = profile ? /localhost|127\.0\.0\.1/.test(profile.baseUrl) : false;
+  // A unique name the user can leave alone: the preset's id, numbered when taken.
+  const suggested = useMemo(() => {
+    const base = profile?.id.replace(/-(direct|gateway)$/, "") ?? "provider";
+    let n = 1;
+    let s = base;
+    while (existing.some((c) => c.name === s)) s = `${base}-${++n}`;
+    return s;
+  }, [profile, existing]);
+  const needsUrl = Boolean(profile?.template) && !baseUrl.trim();
+
+  async function submit() {
+    if (!profile) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api<{ connection: Connection }>("/connections", {
+        method: "POST",
+        json: { name: name.trim() || suggested, profileId: profile.id, key: key || (local ? "local" : ""), baseUrl: baseUrl.trim() || undefined, headerName: headerName.trim() || undefined, extraHeaders: headerRecord(headers) },
+      });
+      setKey("");
+      onAdded(res.connection);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!profile) return null;
+  const sentAs = `${headerName.trim() || profile.auth.headerName}: ${profile.auth.prefix ?? ""}…`;
+
+  return (
+    <section className="card add-provider">
+      <h3>Add a provider</h3>
+      <ol className="steps">
+        <li>
+          <div className="step-title">Choose where the models run</div>
+          <select value={profile.id} onChange={(e) => setProfileId(e.target.value)} aria-label="Provider">
+            {profiles.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.displayName}
+              </option>
+            ))}
+          </select>
+          {profile.description && <p className="hint">{profile.description}</p>}
+        </li>
+        <li>
+          <div className="step-title">{local ? "Point Rig at the server" : "Paste the key"}</div>
+          {profile.template && (
+            <label className="field">
+              <span>Base URL</span>
+              <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={profile.baseUrl} spellCheck={false} />
+              <span className="hint">{local ? "Where the server listens. The address shown is the usual one." : "Your gateway's URL, without the route."}</span>
+            </label>
+          )}
+          <label className="field">
+            <span>Key{local ? " (optional)" : ""}</span>
+            <div className="row nowrap">
+              <input
+                className="grow"
+                type={reveal ? "text" : "password"}
+                value={key}
+                onChange={(e) => setKey(e.target.value)}
+                autoComplete="off"
+                spellCheck={false}
+                onKeyDown={(e) => e.key === "Enter" && !busy && (key || local) && !needsUrl && submit()}
+              />
+              <button type="button" className="ghost" onClick={() => setReveal(!reveal)}>
+                {reveal ? "Hide" : "Show"}
+              </button>
+            </div>
+            <span className="hint">
+              Sent as <span className="mono">{sentAs}</span>. Stored in {storedIn}, and never shown again.
+            </span>
+          </label>
+          <details className="advanced">
+            <summary>Advanced</summary>
+            <div className="grid2">
+              <label className="field">
+                <span>Name</span>
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder={suggested} />
+                <span className="hint">How this provider appears in Rig.</span>
+              </label>
+              <label className="field">
+                <span>Header for the key</span>
+                <input value={headerName} onChange={(e) => setHeaderName(e.target.value)} placeholder={profile.auth.headerName} />
+                <span className="hint">Change it if your gateway expects the key elsewhere.</span>
+              </label>
+              {!profile.template && (
+                <label className="field">
+                  <span>Base URL</span>
+                  <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} placeholder={profile.baseUrl} spellCheck={false} />
+                  <span className="hint">Only to route through a proxy.</span>
+                </label>
+              )}
+            </div>
+            <HeaderFields rows={headers} onChange={setHeaders} />
+          </details>
+        </li>
+        <li>
+          <div className="step-title">Connect and test</div>
+          <p className="hint">Rig sends each known model a tiny request (a few tokens), so you see which ones the key can reach before anything depends on them.</p>
+          {error && <div className="issue error">{error}</div>}
+          <div className="row">
+            <button className="primary" onClick={submit} disabled={busy || (!key && !local) || needsUrl}>
+              {busy ? "Connecting…" : "Connect and test"}
+            </button>
+            {onCancel && (
+              <button className="ghost" onClick={onCancel}>
+                Cancel
+              </button>
+            )}
+          </div>
+        </li>
+      </ol>
+    </section>
   );
 }

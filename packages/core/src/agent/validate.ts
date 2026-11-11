@@ -1,4 +1,4 @@
-import { AgentDefinitionSchema, SIDE_EFFECT_TOOLS, slugify, type AgentDefinition, type AgentDefinitionInput } from "./schema";
+import { AgentDefinitionSchema, SIDE_EFFECT_TOOLS, slugify, type BuiltinToolName, type AgentDefinition, type AgentDefinitionInput } from "./schema";
 
 export interface ValidationIssue {
   path: string;
@@ -54,7 +54,7 @@ export function validateAgentDefinition(input: unknown, opts: ValidateOptions = 
   // sandbox 0 forbids process spawn and writes
   if (def.sandbox === 0) {
     for (const t of def.tools) {
-      if (t === "file_write" || t === "shell" || t === "memory_write") {
+      if (t === "file_write" || t === "file_edit" || t === "shell" || t === "memory_write") {
         issues.push({ path: "tools", message: `"${t}" requires sandbox level 1 or higher`, severity: "error" });
       }
     }
@@ -63,7 +63,6 @@ export function validateAgentDefinition(input: unknown, opts: ValidateOptions = 
   // skills need load_skill to be reachable
   if (def.knowledge?.length && !def.tools.includes("knowledge_read")) issues.push({ path: "tools", message: "Knowledge folders require knowledge_read", severity: "error" });
   if (def.memory && !def.tools.includes("memory_read")) issues.push({ path: "tools", message: "Persistent memory requires memory_read", severity: "error" });
-  if (!def.memory && def.tools.some((t) => t === "memory_read" || t === "memory_write")) issues.push({ path: "memory", message: "Enable persistent memory to use memory tools", severity: "error" });
   if (def.tools.includes("memory_write") && !def.approvals.includes("memory_write")) issues.push({ path: "approvals", message: "memory_write requires approval", severity: "error" });
   if (def.skills.length && !def.tools.includes("load_skill")) {
     issues.push({
@@ -75,7 +74,7 @@ export function validateAgentDefinition(input: unknown, opts: ValidateOptions = 
 
   if (opts.knownSkills) {
     for (const s of def.skills) {
-      if (!opts.knownSkills.includes(s)) {
+      if (s !== "*" && !opts.knownSkills.includes(s)) {
         issues.push({ path: "skills", message: `skill "${s}" is not installed on this machine`, severity: "warning" });
       }
     }
@@ -83,7 +82,7 @@ export function validateAgentDefinition(input: unknown, opts: ValidateOptions = 
 
   // side-effect tools without approval: allowed, but warn
   for (const t of def.tools) {
-    if (SIDE_EFFECT_TOOLS.includes(t) && !def.approvals.includes(t)) {
+    if (SIDE_EFFECT_TOOLS.includes(t as BuiltinToolName) && !def.approvals.includes(t)) {
       issues.push({
         path: "approvals",
         message: `"${t}" has side effects and will run without approval`,

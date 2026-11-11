@@ -92,17 +92,17 @@ describe("agent knowledge and persistent memory", () => {
   it("scopes host access and keeps notes across restart without overwriting concurrent changes", async () => {
     const agent = built.app.agents.save(definition()).saved!;
     const host = createHost(built.app, agent);
-    expect(await host.readMemory!()).toBe("");
-    await host.writeMemory!("Source: reference/nested/guide.md", "");
-    await expect(host.writeMemory!("stale write", "")).rejects.toThrow("changed");
+    expect(await host.readNotes!()).toBe("");
+    await host.writeNotes!("Source: reference/nested/guide.md", "");
+    await expect(host.writeNotes!("stale write", "")).rejects.toThrow("changed");
     const other = built.app.agents.save(definition({ slug: "other", knowledge: [] })).saved!;
-    expect(await createHost(built.app, other).readMemory!()).toBe("");
+    expect(await createHost(built.app, other).readNotes!()).toBe("");
     await expect(createHost(built.app, other).readKnowledge!("reference", ".", 0, signal())).rejects.toThrow("Unknown");
     built.app.db.close();
     built = await buildApp({ home: path.join(home, "runtime") }, { fileSecrets: true });
     const restored = built.app.agents.get("research")!;
     expect(restored.knowledge).toEqual(sources());
-    expect(await createHost(built.app, restored).readMemory!()).toBe("Source: reference/nested/guide.md");
+    expect(await createHost(built.app, restored).readNotes!()).toBe("Source: reference/nested/guide.md");
     built.app.agents.delete("research");
     expect(built.app.db.prepare("SELECT * FROM agent_memory WHERE slug = ?").get("research")).toBeUndefined();
   });

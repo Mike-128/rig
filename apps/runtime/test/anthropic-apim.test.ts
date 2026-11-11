@@ -85,7 +85,8 @@ describe("Anthropic Messages through APIM", () => {
       expect(call.body).not.toHaveProperty("anthropic_version");
     }
     expect(calls[0].body).toMatchObject({ tools: [expect.objectContaining({ name: "file_read", input_schema: expect.objectContaining({ type: "object" }) })] });
-    const expected = decision === "approve" ? "synthetic file content" : "The user declined this tool call.";
+    // file_read numbers lines (1<tab>text), as Claude Code does.
+    const expected = decision === "approve" ? "1\tsynthetic file content" : "The user declined this tool call.";
     expect(calls[1].body).toMatchObject({ messages: [
       { role: "user", content: [{ type: "text", text: "read hello.txt" }] },
       { role: "assistant", content: [expect.anything(), { type: "tool_use", id: "toolu_1", name: "file_read", input: { path: "hello.txt" } }] },

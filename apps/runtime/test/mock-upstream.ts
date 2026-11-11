@@ -7,7 +7,7 @@ import http from "node:http";
  * Models: "mock-claude" (Anthropic dialect), "mock-gpt" (OpenAI dialect). Others -> 404.
  * Behavior: the mock picks a tool from the user's text and the offered tools (see chooseTool):
  * "read" -> file_read, "skill" -> load_skill, "build"/"create an agent" -> agent_write.
- * After a tool result it replies with the result content.
+ * After a tool result it replies with the result content. "slow" in the user's text delays the reply.
  */
 export const GOOD_KEY = "good-key";
 
@@ -59,6 +59,12 @@ export function chooseTool(messages: { role: string; content: unknown }[], tools
   );
   const text = lastUserText(messages);
   if (names.has("knowledge_read") && /knowledge/i.test(text)) return { name: "knowledge_read", args: { source: "reference", path: "nested/guide.md" } };
+  if (names.has("memory_write") && /\bremember for the team\b/i.test(text)) {
+    return {
+      name: "memory_write",
+      args: { scope: "team", name: "gateway-needs-apim-header", type: "gotcha", description: "The gateway rejects Authorization: Bearer", body: "Send the key in Ocp-Apim-Subscription-Key; SDK v1 defaults to Bearer." },
+    };
+  }
   if (names.has("memory_write") && /remember/i.test(text)) return { name: "memory_write", args: { content: "Project code: ORANGE (reference/nested/guide.md)", expectedContent: "" } };
   if (names.has("memory_read") && /recall/i.test(text)) return { name: "memory_read", args: {} };
   if (names.has("agent_write") && /build|create an agent/i.test(text)) {
@@ -76,22 +82,45 @@ export function chooseTool(messages: { role: string; content: unknown }[], tools
   }
   if (names.has("load_skill") && /skill/i.test(text)) return { name: "load_skill", args: { name: "agent-design" } };
   if (names.has("file_read") && /read/i.test(text)) return { name: "file_read", args: { path: "hello.txt" } };
-  return undefined;
-}
-
-function anthropicToolResult(messages: { role: string; content: unknown }[]): string | undefined {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const c = messages[i].content;
-    if (Array.isArray(c)) {
-      const r = c.find((b) => b.type === "tool_result");
-      if (r) return typeof r.content === "string" ? r.content : JSON.stringify(r.content);
-    }
+  if (names.has("file_edit") && /\bedit\b/i.test(text)) return { name: "file_edit", args: { path: "hello.txt", old_string: "hello", new_string: "hello, edited" } };
+  if (names.has("shell") && /\brun\b/i.test(text)) return { name: "shell", args: { command: "echo running tests && echo all 12 tests passed" } };
+  if (names.has("glob") && /\bfind\b/i.test(text)) return { name: "glob", args: { pattern: "**/*" } };
+  if (names.has("todo_write") && /\bplan\b/i.test(text)) {
+    return {
+      name: "todo_write",
+      args: {
+        todos: [
+          { content: "Read the code", status: "completed" },
+          { content: "Make the change", status: "in_progress", activeForm: "Making the change" },
+          { content: "Run the tests", status: "pending" },
+        ],
+      },
+    };
+  }
+  if (names.has("task") && /\bdelegate\b/i.test(text)) return { name: "task", args: { description: "Survey the project", prompt: "find every file" } };
+  // "mcp <tool>" calls the first offered MCP tool whose name contains <tool>.
+  const mcp = text.match(/\bmcp (\S+)/i);
+  if (mcp) {
+    const name = [...names].find((n) => n.startsWith("mcp__") && n.includes(mcp[1]));
+    if (name) return { name, args: { text: "hi" } };
   }
   return undefined;
 }
 
+/** The tool result the model is answering, if the latest turn carries one; earlier results are history. */
+function anthropicToolResult(messages: { role: string; content: unknown }[]): string | undefined {
+  const c = messages[messages.length - 1]?.content;
+  if (!Array.isArray(c)) return undefined;
+  const r = c.find((b) => b.type === "tool_result");
+  if (!r) return undefined;
+  return typeof r.content === "string" ? r.content : JSON.stringify(r.content);
+}
+
 function openaiToolResult(messages: { role: string; content: unknown }[]): string | undefined {
-  for (let i = messages.length - 1; i >= 0; i--) if (messages[i].role === "tool") return String(messages[i].content);
+  // Tool messages come last, possibly followed by a user message carrying steering text.
+  for (let i = messages.length - 1; i >= 0 && (messages[i].role === "tool" || messages[i].role === "user"); i--) {
+    if (messages[i].role === "tool") return String(messages[i].content);
+  }
   return undefined;
 }
 
@@ -125,6 +154,8 @@ export function startMockUpstream(options: { anthropicGateway?: { route: string;
     const model = String(body.model ?? "");
     const messages = (body.messages ?? []) as { role: string; content: unknown }[];
     const hasTools = Array.isArray(body.tools) && body.tools.length > 0;
+    // "slow" in the latest user text holds the reply back, so tests can act while a run is working.
+    if (/\bslow\b/.test(lastUserText(messages))) await new Promise((r) => setTimeout(r, 400));
 
     // ---------------- Anthropic dialect ----------------
     if (req.url === (gateway?.route ?? "/v1/messages") && req.method === "POST") {

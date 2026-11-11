@@ -20,33 +20,33 @@ The PATH line is for the user-local installation described in that guide. Apply 
 
 Open [http://127.0.0.1:7777](http://127.0.0.1:7777). The built UI does not require Vite. If using Vite on port 5173, the runtime must still run separately. From a second terminal, `pnpm.cmd rig doctor` checks runtime health; it does not establish provider tool compatibility.
 
-## 2. Configure the connection in Models
+## 2. Configure the connection in Settings › Models
 
 | Connection field | Setting |
 | --- | --- |
-| Gateway profile | **Azure API Management gateway (template)** |
-| Connection name | A recognizable local name, such as `claude-apim-test` |
+| Choose where the models run | **Azure API Management gateway (template)** |
+| Base URL | Gateway origin, for example `https://gateway.example.com` |
 | Key | Your APIM subscription key, entered only in this field |
-| Base URL override | Gateway origin, for example `https://gateway.example.com` |
-| Auth header override | Your gateway's documented header; commonly `Ocp-Apim-Subscription-Key` |
-| Additional request headers | Required non-secret metadata as header/value rows, for example `x-project-code` / `demo-project` |
+| Advanced › Name | A recognizable local name, such as `claude-apim-test` |
+| Advanced › Header for the key | Your gateway's documented header; commonly `Ocp-Apim-Subscription-Key` |
+| Advanced › Additional request headers | Required non-secret metadata as header/value rows, for example `x-project-code` / `demo-project` |
 
-Click **Add and probe**. The template's sample model routes may fail; configure your actual model in the next step. Use **Connection settings** to edit metadata headers on an existing connection. These values are visible in settings and are not secret storage.
+Click **Connect and test**. The template's sample model routes may fail; configure your actual model in the next step. Use **Connection settings** to edit metadata headers on an existing connection. These values are visible in settings and are not secret storage.
 
 The SDK sends `anthropic-version: 2023-06-01`; Rig forwards it through the proxy. Do not put the APIM key into an additional header, agent instruction, or model query field. Do not add a native Google `anthropic_version` body field for a standard Messages endpoint.
 
 ## 3. Add the Claude model manually
 
-On the connection card, select **Add model manually**:
+On the connection card, select **Add a model by id**:
 
 | Model field | Setting |
 | --- | --- |
 | Model ID | Exact model identifier accepted by the gateway, or a stable local ID such as `claude-test` if using the body override below |
 | Display name | Optional friendly label, such as `Claude gateway test` |
-| Dialect | **`anthropic.messages`** |
-| Route (path appended to base URL) | Full gateway path, for example `/ai/platform/claude/v1/messages` |
-| Body model override | Exact identifier expected in the request's `model` field; leave blank only when Model ID already matches it |
-| Query parameters (JSON string values) | **`{}`** unless your gateway explicitly requires query parameters |
+| Dialect | **Anthropic Messages** (`anthropic.messages`) |
+| Route | Full gateway path, for example `/ai/platform/claude/v1/messages` |
+| Model id in the body (optional) | Exact identifier expected in the request's `model` field; leave blank only when Model ID already matches it |
+| Query parameters (JSON, string values) | **`{}`** unless your gateway explicitly requires query parameters |
 | Max tokens field (OpenAI dialect) | Not used for Anthropic; the adapter sends `max_tokens` |
 | Supports reasoning effort | Leave unchecked for this baseline test; enable only with confirmed model/gateway support |
 

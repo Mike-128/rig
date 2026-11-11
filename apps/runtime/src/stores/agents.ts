@@ -6,11 +6,16 @@ import { nowIso, type Db } from "../db";
 /**
  * Agents live as YAML files (the shareable artifact) with a SQLite index.
  * Saving bumps the version and archives the previous file under history/.
+ *
+ * Team agents come from the synced team repo and are read-only here: changing one goes through a
+ * pull request. A local agent with the same slug shadows the team one, so a person can try changes
+ * before proposing them.
  */
 export class AgentStore {
   constructor(
     private db: Db,
     private dir: string,
+    private teamDir: () => string | undefined = () => undefined,
   ) {
     mkdirSync(dir, { recursive: true });
     this.reindex();
@@ -44,22 +49,64 @@ export class AgentStore {
       .run(def.slug, def.name, def.description ?? null, def.version, nowIso());
   }
 
-  list(): AgentSummary[] {
-    return (
-      this.db.prepare("SELECT slug, name, description, version, updated_at as updatedAt FROM agents ORDER BY name").all() as unknown as AgentSummary[]
-    ).map((a) => ({ ...a, description: a.description ?? undefined }));
+  private teamFile(slug: string): string | undefined {
+    const d = this.teamDir();
+    if (!d) return undefined;
+    const p = path.join(d, "agents", `${slug}.yaml`);
+    return existsSync(p) ? p : undefined;
   }
 
+  /** Team agents that parse and validate; a broken file in the repo is skipped, not fatal. */
+  teamAgents(): AgentDefinition[] {
+    const d = this.teamDir();
+    const dir = d && path.join(d, "agents");
+    if (!dir || !existsSync(dir)) return [];
+    const out: AgentDefinition[] = [];
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".yaml")) continue;
+      try {
+        const v = validateAgentDefinition(agentFromYaml(readFileSync(path.join(dir, f), "utf8")));
+        if (v.definition && v.definition.slug === f.slice(0, -5)) out.push(v.definition);
+      } catch {
+        /* skip */
+      }
+    }
+    return out;
+  }
+
+  list(): AgentSummary[] {
+    const team = new Map(this.teamAgents().map((a) => [a.slug, a]));
+    const local = (
+      this.db.prepare("SELECT slug, name, description, version, updated_at as updatedAt FROM agents ORDER BY name").all() as unknown as AgentSummary[]
+    ).map((a) => ({ ...a, description: a.description ?? undefined, source: "local" as const, inTeam: team.has(a.slug) }));
+    const localSlugs = new Set(local.map((a) => a.slug));
+    const teamOnly = [...team.values()]
+      .filter((a) => !localSlugs.has(a.slug))
+      .map((a) => ({ slug: a.slug, name: a.name, description: a.description, version: a.version, updatedAt: "", source: "team" as const }));
+    return [...local, ...teamOnly].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** The agent a run uses: the local one if present, else the team's. */
   get(slug: string): AgentDefinition | undefined {
-    const p = this.filePath(slug);
-    if (!existsSync(p)) return undefined;
+    const p = existsSync(this.filePath(slug)) ? this.filePath(slug) : this.teamFile(slug);
+    if (!p) return undefined;
     const v = validateAgentDefinition(agentFromYaml(readFileSync(p, "utf8")));
     return v.definition;
   }
 
+  /** The team repo's version of an agent, ignoring any local copy. */
+  getTeam(slug: string): AgentDefinition | undefined {
+    const p = this.teamFile(slug);
+    return p ? validateAgentDefinition(agentFromYaml(readFileSync(p, "utf8"))).definition : undefined;
+  }
+
+  isLocal(slug: string): boolean {
+    return existsSync(this.filePath(slug));
+  }
+
   getYaml(slug: string): string | undefined {
-    const p = this.filePath(slug);
-    return existsSync(p) ? readFileSync(p, "utf8") : undefined;
+    const p = existsSync(this.filePath(slug)) ? this.filePath(slug) : this.teamFile(slug);
+    return p ? readFileSync(p, "utf8") : undefined;
   }
 
   getVersion(slug: string, version: number): AgentDefinition | undefined {

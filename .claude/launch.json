@@ -4,14 +4,42 @@
     {
       "name": "runtime",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@rig/runtime", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@rig/runtime",
+        "dev"
+      ],
       "port": 7777
     },
     {
       "name": "web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@rig/web", "dev"],
+      "runtimeArgs": [
+        "--filter",
+        "@rig/web",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "demo",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@rig/runtime",
+        "demo"
+      ],
+      "port": 7790
+    },
+    {
+      "name": "demo-fresh",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@rig/runtime",
+        "demo:fresh"
+      ],
+      "port": 7790
     }
   ]
 }

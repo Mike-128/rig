@@ -10,6 +10,8 @@ export interface RuntimeConfig {
   workspacesDir: string;
   profilesDir: string;
   skillsDir: string;
+  /** Claude Code's user skills folder, read as an extra skill source; null to ignore it. */
+  claudeSkillsDir: string | null;
   host: string;
   port: number;
   maxConcurrentRuns: number;
@@ -29,6 +31,13 @@ export function loadConfig(overrides: Partial<RuntimeConfig> = {}): RuntimeConfi
     workspacesDir: path.join(home, "workspaces"),
     profilesDir: path.join(home, "profiles"),
     skillsDir: path.join(home, "skills"),
+    // Only the real install looks at ~/.claude; a custom RIG_HOME (tests, sandboxes) stays self-contained.
+    claudeSkillsDir:
+      process.env.RIG_CLAUDE_SKILLS !== undefined
+        ? process.env.RIG_CLAUDE_SKILLS || null
+        : home === path.join(os.homedir(), ".rig")
+          ? path.join(os.homedir(), ".claude", "skills")
+          : null,
     host,
     port,
     maxConcurrentRuns: Number(process.env.RIG_MAX_RUNS ?? 4),

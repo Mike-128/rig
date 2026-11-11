@@ -1,4 +1,4 @@
-import type { Run, RunEvent, RunEventBody, RunStatus, Session, SessionKind, Usage } from "@rig/core";
+import type { PermissionMode, Run, RunEvent, RunEventBody, RunStatus, Session, SessionKind, Usage } from "@rig/core";
 import { json, nowIso, type Db } from "../db";
 
 interface SessionRow {
@@ -8,6 +8,8 @@ interface SessionRow {
   agent_version: number;
   workspace: string;
   title: string;
+  mode: string;
+  allow_rules: string;
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +42,8 @@ const toSession = (r: SessionRow): Session => ({
   agentVersion: r.agent_version,
   workspace: r.workspace,
   title: r.title,
+  mode: (r.mode || "default") as PermissionMode,
+  allowRules: json<string[]>(r.allow_rules, []),
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -77,12 +81,52 @@ export class SessionStore {
     return r ? toSession(r) : undefined;
   }
 
-  createSession(s: Omit<Session, "createdAt" | "updatedAt">): Session {
+  createSession(s: Omit<Session, "createdAt" | "updatedAt" | "mode" | "allowRules"> & Partial<Pick<Session, "mode" | "allowRules">>): Session {
     const t = nowIso();
     this.db
-      .prepare("INSERT INTO sessions (id, kind, agent_slug, agent_version, workspace, title, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)")
-      .run(s.id, s.kind, s.agentSlug, s.agentVersion, s.workspace, s.title, t, t);
+      .prepare(
+        "INSERT INTO sessions (id, kind, agent_slug, agent_version, workspace, title, mode, allow_rules, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+      )
+      .run(s.id, s.kind, s.agentSlug, s.agentVersion, s.workspace, s.title, s.mode ?? "default", JSON.stringify(s.allowRules ?? []), t, t);
     return this.getSession(s.id)!;
+  }
+
+  setMode(id: string, mode: PermissionMode): void {
+    this.db.prepare("UPDATE sessions SET mode = ? WHERE id = ?").run(mode, id);
+  }
+
+  setTitle(id: string, title: string): void {
+    this.db.prepare("UPDATE sessions SET title = ? WHERE id = ?").run(title, id);
+  }
+
+  /** Switch the agent a session runs; history is kept and the new agent continues from it. */
+  setAgent(id: string, slug: string, version: number): void {
+    this.db.prepare("UPDATE sessions SET agent_slug = ?, agent_version = ? WHERE id = ?").run(slug, version, id);
+  }
+
+  addAllowRule(id: string, rule: string): void {
+    const s = this.getSession(id);
+    if (!s || s.allowRules.includes(rule)) return;
+    this.db.prepare("UPDATE sessions SET allow_rules = ? WHERE id = ?").run(JSON.stringify([...s.allowRules, rule]), id);
+  }
+
+  removeAllowRule(id: string, rule: string): void {
+    const s = this.getSession(id);
+    if (!s) return;
+    this.db.prepare("UPDATE sessions SET allow_rules = ? WHERE id = ?").run(JSON.stringify(s.allowRules.filter((r) => r !== rule)), id);
+  }
+
+  /** Distinct folders sessions have worked in, most recent first. */
+  recentWorkspaces(excludeUnder: string, limit = 20): { path: string; lastUsed: string }[] {
+    const rows = this.db.prepare("SELECT workspace, MAX(updated_at) AS last FROM sessions GROUP BY workspace ORDER BY last DESC").all() as {
+      workspace: string;
+      last: string;
+    }[];
+    const prefix = excludeUnder.toLowerCase();
+    return rows
+      .filter((r) => !r.workspace.toLowerCase().startsWith(prefix))
+      .slice(0, limit)
+      .map((r) => ({ path: r.workspace, lastUsed: r.last }));
   }
 
   touchSession(id: string, title?: string): void {
