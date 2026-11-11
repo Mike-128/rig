@@ -30,14 +30,19 @@ Open [http://127.0.0.1:7777](http://127.0.0.1:7777). The built UI does not requi
 | Advanced › Name | A recognizable local name, such as `claude-apim-test` |
 | Advanced › Header for the key | Your gateway's documented header; commonly `Ocp-Apim-Subscription-Key` |
 | Advanced › Additional request headers | Required non-secret metadata as header/value rows, for example `x-project-code` / `demo-project` |
+| Choose the model | **I'll name the model and its route** (the default for this template), filled in with the model fields from step 3 |
 
-Click **Connect and test**. The template's sample model routes may fail; configure your actual model in the next step. Use **Connection settings** to edit metadata headers on an existing connection. These values are visible in settings and are not secret storage.
+Click **Connect and test**. Rig stores the connection with the model you named and tests only that model on its own route; it does not request a model listing first. The template's sample routes are not added when you name a model. Use **Connection settings** to edit metadata headers on an existing connection. These values are visible in settings and are not secret storage.
+
+If you choose **Find the models for me** instead, Rig adds the template's sample routes, which may fail on your gateway; configure your actual model with **Add a model by id** as in step 3.
+
+To rotate or switch the subscription key later, use **Replace key** on the connection card. The model, aliases, headers, and agents stay as they are; earlier test results are cleared and the known models are tested with the new key.
 
 The SDK sends `anthropic-version: 2023-06-01`; Rig forwards it through the proxy. Do not put the APIM key into an additional header, agent instruction, or model query field. Do not add a native Google `anthropic_version` body field for a standard Messages endpoint.
 
 ## 3. Add the Claude model manually
 
-On the connection card, select **Add a model by id**:
+These fields appear under **Choose the model** in the Add a provider form, and in **Add a model by id** on an existing connection card:
 
 | Model field | Setting |
 | --- | --- |

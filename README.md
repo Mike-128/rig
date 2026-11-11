@@ -54,7 +54,7 @@ If `pnpm desktop` says Electron failed to install, run `pnpm --filter @rig/deskt
 
 A new install opens with *Connect a model first*; **Settings › Setup** is a checklist of what is configured and what is next.
 
-1. **Connect a provider.** In **Settings › Models**, choose where the models run (Anthropic, OpenAI, Google Gemini, a local OpenAI-compatible server, or the APIM template), paste the key, and click *Connect and test*. Rig sends each known model a tiny request and says, in plain words, which ones the key reaches and what to fix for the rest. The first working model becomes the default; change it under *Default model*.
+1. **Connect a provider.** In **Settings › Models**, choose where the models run (Anthropic, OpenAI, Google Gemini, a local OpenAI-compatible server, or the APIM template), paste the key, and click *Connect and test*. For a gateway whose models need a specific route, choose *I'll name the model and its route* first, and Rig tests that model directly. Otherwise Rig sends each known model a tiny request and says, in plain words, which ones the key reaches and what to fix for the rest. The first working model becomes the default; change it under *Default model*.
 2. **Open a project.** In **Sessions**, click *Open a project…* and choose a folder. The session runs the Coder agent there.
 3. **Work.** Describe the task. Coder plans multi-step work as a visible task list, reads and searches the code, shows each edit as a diff, and streams command output as it runs.
 
