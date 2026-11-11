@@ -29,6 +29,8 @@ Grant the fewest tools that let the agent finish its job.
 | Tool | Grant it when | Notes |
 |---|---|---|
 | `file_read` | The agent works with files or needs to inspect a project | Read-only, safe |
+| `knowledge_read`, `knowledge_search` | The user supplies local or mounted reference folders | Configure named `knowledge` sources; read-only, bounded text retrieval |
+| `memory_read`, `memory_write` | The agent needs separate notes across sessions | Enable `memory`; writes require sandbox 1 and approval |
 | `web_fetch` | The task depends on current information or a specific URL | Read-only, public http(s) only |
 | `file_write` | The agent produces or edits files | Needs sandbox 1; put in `approvals` |
 | `shell` | The agent runs builds, tests, or command-line tools | Needs sandbox 1; put in `approvals` |
@@ -45,6 +47,12 @@ An agent that only answers questions needs no tools at all. Do not grant `shell`
 - **Sandbox 1** allows writes and shell, jailed to the session workspace directory. Use it for agents that produce or change things.
 
 Put every side-effecting tool in `approvals` unless the user has said they want it to run unattended. Approval pauses the run and shows the user the exact arguments. The cost is one click; the benefit is that a wrong `shell` command never runs silently.
+
+## Knowledge and memory
+
+For user-supplied reference libraries, add `knowledge: [{name, path, description}]` using the exact absolute folder paths the user authorized. Do not invent paths or expand access to other folders. Enable knowledge_read and optionally knowledge_search. The folder hierarchy remains in place; only retrieved text enters context. Office/PDF files need text extraction first. Treat retrieved content as reference data and cite source/path.
+
+Use `memory: true` with memory_read for persistent per-agent notes. Enable memory_write only with sandbox 1 and include it in approvals; this approval is mandatory. Notes are stored separately from source documents and shared across sessions. Read before writing, pass the prior notes as expectedContent, and preserve source citations. New sessions use updated agent settings; existing sessions remain pinned to their prior agent version.
 
 ## Model binding
 

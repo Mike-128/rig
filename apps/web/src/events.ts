@@ -24,7 +24,7 @@ export interface ToolItem {
 
 export type ThreadItem =
   | { kind: "user"; key: string; text: string; display?: string; steered?: boolean }
-  | { kind: "assistant"; key: string; text: string; reasoning?: string }
+  | { kind: "assistant"; key: string; text: string; reasoning?: string; latencyMs?: number }
   | ToolItem
   | { kind: "notice"; key: string; level: "warning" | "error" | "info"; text: string }
   | { kind: "compacted"; key: string; summary: string; tokensBefore: number };
@@ -44,6 +44,8 @@ export interface ThreadState {
   live: { text: string; reasoning: string; tool?: string };
   /** The newest todo_write list. */
   todos: Todo[];
+  /** When the current model turn began, to show each reply's latency. */
+  turnTiming?: { runId: string; startedAt: number };
 }
 
 export function emptyThread(): ThreadState {
@@ -92,7 +94,7 @@ function upsertTool(items: ThreadItem[], runId: string, callId: string, make: ()
   }
 }
 
-const ended = (s: ThreadState): Partial<ThreadState> => ({ status: "idle", activeRunId: undefined, live: { text: "", reasoning: "" } });
+const ended = (s: ThreadState): Partial<ThreadState> => ({ status: "idle", activeRunId: undefined, turnTiming: undefined, live: { text: "", reasoning: "" } });
 
 /** Fold one event into the view model. Pure; safe to replay. */
 export function reduceEvent(s: ThreadState, ev: RunEvent): ThreadState {
@@ -113,11 +115,15 @@ export function reduceEvent(s: ThreadState, ev: RunEvent): ThreadState {
 
   switch (ev.type) {
     case "run_started":
+      next.turnTiming = undefined;
       next.activeRunId = ev.runId;
       next.status = "running";
       next.model = ev.model.modelId;
       if (ev.model.contextWindow) next.contextWindow = ev.model.contextWindow;
       next.live = { text: "", reasoning: "" };
+      break;
+    case "turn_started":
+      next.turnTiming = { runId: ev.runId, startedAt: Date.parse(ev.ts) };
       break;
     case "user_message":
       items.push({ kind: "user", key, text: textOf(ev.message), display: ev.display });
@@ -134,7 +140,10 @@ export function reduceEvent(s: ThreadState, ev: RunEvent): ThreadState {
     case "assistant_message": {
       const text = textOf(ev.message);
       const reasoning = reasoningOf(ev.message);
-      if (text || reasoning) items.push({ kind: "assistant", key, text, reasoning: reasoning || undefined });
+      const elapsed = s.turnTiming?.runId === ev.runId ? Date.parse(ev.ts) - s.turnTiming.startedAt : NaN;
+      const latencyMs = Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : undefined;
+      if (text || reasoning) items.push({ kind: "assistant", key, text, reasoning: reasoning || undefined, latencyMs });
+      next.turnTiming = undefined;
       next.live = { text: "", reasoning: "" };
       break;
     }

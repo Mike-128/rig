@@ -29,6 +29,7 @@ import { memoryRoutes } from "./routes/memory";
 import { RIG_VERSION, settingsRoutes } from "./routes/settings";
 import { SettingsStore } from "./stores/settings";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { folderRoutes } from "./routes/folders";
 
 export interface BuiltApp {
   app: AppContext;
@@ -98,6 +99,7 @@ export async function buildApp(overrides: Partial<RuntimeConfig> = {}, opts: Bui
   hono.route("/api", teamRoutes(app));
   hono.route("/api/memory", memoryRoutes(app));
   hono.route("/api", settingsRoutes(app));
+  hono.route("/api", folderRoutes());
   hono.onError((err, c) => {
     console.error("[rig] unhandled", err);
     return c.json({ error: err.message }, 500);

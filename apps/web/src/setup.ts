@@ -28,7 +28,7 @@ export interface Settings {
 
 /** What a probe result means, in the words the UI uses everywhere. */
 export const STATUS_LABEL: Record<string, string> = {
-  entitled: "Works",
+  entitled: "Reachable",
   unauthorized: "Key rejected",
   forbidden: "Not allowed",
   not_found: "Not found",
@@ -40,7 +40,7 @@ export const STATUS_LABEL: Record<string, string> = {
 };
 
 export const STATUS_HELP: Record<string, string> = {
-  entitled: "A test request to this model succeeded.",
+  entitled: "The provider accepted the key for this model. A request rejected only for validation counts too, so send a chat before relying on it.",
   unauthorized: "The provider rejected the key (401). Check the key, and the header it is sent in.",
   forbidden: "The key is valid but not allowed to use this model (403).",
   not_found: "The route or model id was not found (404). Check the base URL and the model id.",

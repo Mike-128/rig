@@ -1,6 +1,8 @@
 /** Tool names an agent definition may reference. Kept separate to avoid a schema/tool import cycle. */
 export const AGENT_TOOL_NAMES = [
   "file_read",
+  "knowledge_read",
+  "knowledge_search",
   "file_write",
   "file_edit",
   "glob",

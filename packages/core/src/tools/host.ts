@@ -32,6 +32,11 @@ export interface HostWriteResult {
  * Core declares the interface; the runtime implements it against its stores.
  */
 export interface HostServices {
+  readKnowledge?(source: string, file: string, offset: number, signal: AbortSignal): Promise<string>;
+  searchKnowledge?(source: string, query: string, signal: AbortSignal): Promise<string>;
+  /** This agent's own notebook (agent definitions with memory: true), replaced whole with an optimistic check. */
+  readNotes?(): Promise<string>;
+  writeNotes?(content: string, expectedContent: string): Promise<string>;
   listAgents(): HostAgentSummary[];
   readAgentYaml(slug: string): string | undefined;
   writeAgent(definition: unknown): HostWriteResult;

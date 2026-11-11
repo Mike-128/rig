@@ -6,11 +6,13 @@ import type { McpServerStatus } from "./Mcp";
 
 type ModelRow = Model & { connectionName: string };
 
-const WORKSPACE_TOOLS = ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill", "memory_read", "memory_write"] as const;
+const WORKSPACE_TOOLS = ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill", "knowledge_read", "knowledge_search", "memory_read", "memory_write"] as const;
 
 const TOOL_HELP: Record<string, string> = {
-  memory_read: "Read notes from earlier sessions, yours and the team's. Read-only.",
-  memory_write: "Save notes for future sessions. Team notes are proposed through a pull request.",
+  knowledge_read: "Browse and read only the configured knowledge folders.",
+  knowledge_search: "Search nested knowledge files for literal text; read-only and bounded.",
+  memory_read: "Read memory from earlier sessions: personal and team memories, and this agent's notebook when persistent notes are on. Read-only.",
+  memory_write: "Save memory for future sessions, always with approval: personal at once, team through a pull request, or this agent's notebook. Needs sandbox 1.",
   file_read: "Read files (with line numbers and ranges) and list directories inside the workspace. Read-only.",
   glob: "Find files by name pattern. Read-only.",
   grep: "Search file contents with a regular expression. Read-only.",
@@ -41,6 +43,8 @@ interface Form {
   model: string;
   tools: string[];
   skills: string[];
+  knowledge: { name: string; path: string; description: string }[];
+  memory: boolean;
   approvals: string[];
   sandbox: 0 | 1;
   maxTurns: number;
@@ -62,6 +66,8 @@ const blank = (): Form => ({
   model: "",
   tools: ["web_fetch", "file_read"],
   skills: [],
+  knowledge: [],
+  memory: false,
   approvals: [],
   sandbox: 1,
   maxTurns: 25,
@@ -79,8 +85,10 @@ function toInput(f: Form): AgentDefinitionInput {
     description: f.description || undefined,
     model: f.bindingKind === "alias" ? { alias: f.alias } : { connection: f.connection, model: f.model },
     instructions: f.instructions,
-    tools: f.tools as AgentDefinitionInput["tools"],
+    tools: [...new Set([...f.tools, ...(f.knowledge.length ? ["knowledge_read", "knowledge_search"] : []), ...(f.memory ? ["memory_read"] : [])])] as AgentDefinitionInput["tools"],
     skills: f.skills,
+    knowledge: f.knowledge.length ? f.knowledge : undefined,
+    memory: f.memory || undefined,
     sandbox: f.sandbox,
     approvals: f.approvals as AgentDefinitionInput["approvals"],
     budget: {
@@ -113,6 +121,8 @@ function fromDefinition(d: Record<string, unknown>): Form {
     model: model.model ?? "",
     tools: (d.tools as string[]) ?? [],
     skills: (d.skills as string[]) ?? [],
+    knowledge: ((d.knowledge ?? []) as Form["knowledge"]).map((s) => ({ ...s, description: s.description ?? "" })),
+    memory: d.memory === true,
     approvals: (d.approvals as string[]) ?? [],
     sandbox: (d.sandbox as 0 | 1) ?? 1,
     maxTurns: budget.maxTurns ?? 25,
@@ -136,6 +146,17 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
   const [importText, setImportText] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [version, setVersion] = useState<number | null>(null);
+  const [folderCheck, setFolderCheck] = useState("");
+  const [checkingFolder, setCheckingFolder] = useState(false);
+
+  async function checkFolder(source: Form["knowledge"][number]) {
+    setCheckingFolder(true); setFolderCheck("Checking folder access…");
+    try {
+      const result = await api<{ preview: { entries: { name: string; kind: string }[]; truncated: boolean } }>("/agents/knowledge/check", { method: "POST", json: source });
+      setFolderCheck(`${source.name}: accessible\n${result.preview.entries.map((e) => `${e.kind}: ${e.name}`).join("\n") || "(empty folder)"}${result.preview.truncated ? "\nListing truncated at 500 entries" : ""}`);
+    } catch (e) { setFolderCheck((e as Error).message); }
+    finally { setCheckingFolder(false); }
+  }
 
   const refresh = () => api<AgentSummary[]>("/agents").then(setAgents);
 
@@ -151,6 +172,7 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
   }, []);
 
   useEffect(() => {
+    setFolderCheck("");
     if (!editing) {
       setForm(blank());
       setYaml("");
@@ -470,6 +492,27 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
                 <option value="high">high</option>
               </select>
             </label>
+          </div>
+
+          <div className="card">
+            <h3>Knowledge folders and memory</h3>
+            <p className="muted">Attach local folders, mounted drives or UNC shares accessible to the machine running Rig. The agent browses the nested structure and retrieves relevant UTF-8 text on demand. Source files stay read-only; retrieved excerpts are sent to the agent's configured model and saved in chat history.</p>
+            <p className="muted">Supports text, Markdown, code and text data files up to 1 MiB each. Export PDF and Office files to text first. Network access uses the runtime's Windows account; no administrator mode is needed.</p>
+            {form.knowledge.map((source, index) => (
+              <div className="subsection" key={index}>
+                <label className="field"><span>Source name</span><input value={source.name} placeholder="reference" onChange={(e) => { setFolderCheck(""); set("knowledge", form.knowledge.map((s, i) => i === index ? { ...s, name: e.target.value } : s)); }} /></label>
+                <label className="field"><span>Absolute folder path on the runtime machine</span><input value={source.path} placeholder={"C:\\Knowledge or \\\\server\\share\\Knowledge"} onChange={(e) => { setFolderCheck(""); set("knowledge", form.knowledge.map((s, i) => i === index ? { ...s, path: e.target.value } : s)); }} /></label>
+                <label className="field"><span>Description for the agent</span><input value={source.description} placeholder="Product manuals and reference notes" onChange={(e) => set("knowledge", form.knowledge.map((s, i) => i === index ? { ...s, description: e.target.value } : s))} /></label>
+                <button disabled={checkingFolder || !source.path || !source.name} onClick={() => checkFolder(source)}>Check folder</button>{" "}
+                <button onClick={() => { setFolderCheck(""); set("knowledge", form.knowledge.filter((_, i) => i !== index)); }}>Remove folder</button>
+              </div>
+            ))}
+            <button disabled={form.knowledge.length >= 10} onClick={() => set("knowledge", [...form.knowledge, { name: "", path: "", description: "" }])}>Add knowledge folder</button>
+            {folderCheck && <pre style={{ maxHeight: 220, overflow: "auto", whiteSpace: "pre-wrap" }}>{folderCheck}</pre>}
+            <p className="muted">Save to attach folders; knowledge tools are enabled automatically. Start a new session after changing an agent: existing sessions keep their saved agent version. A folder check lists names locally and does not call a model.</p>
+            <label className="field"><span><input type="checkbox" checked={form.memory} onChange={(e) => setForm((f) => ({ ...f, memory: e.target.checked, tools: e.target.checked ? [...new Set([...f.tools, "memory_read"])] : f.tools }))} /> Enable persistent notes for this agent</span></label>
+            {form.memory && <label className="field"><span><input type="checkbox" disabled={form.sandbox === 0} checked={form.tools.includes("memory_write")} onChange={(e) => setForm((f) => ({ ...f, tools: e.target.checked ? [...new Set([...f.tools, "memory_write"])] : f.tools.filter((t) => t !== "memory_write"), approvals: e.target.checked ? [...new Set([...f.approvals, "memory_write"])] : f.approvals.filter((t) => t !== "memory_write") }))} /> Allow note updates, with approval (sandbox 1)</span></label>}
+            <p className="muted">Notes live separately in Rig's local database and persist across sessions and restarts. Turning notes off keeps them, and keeps the memory tools for personal and team memory; deleting the agent deletes its notes. No automatic whole-folder ingestion or semantic index is created.</p>
           </div>
 
           <div className="card">

@@ -27,6 +27,12 @@ export const ModelBindingSchema = z.union([
 ]);
 export type ModelBinding = z.infer<typeof ModelBindingSchema>;
 
+export const KnowledgeSourceSchema = z.object({
+  name: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/, "Use lowercase letters, digits and dashes for the source name"),
+  path: z.string().min(1).max(2048).refine((p) => !p.includes("\0") && (/^\//.test(p) || /^[A-Za-z]:[\\/]/.test(p) || /^\\\\[^\\]+\\[^\\]+/.test(p)), "Use an absolute local, mounted-drive or UNC folder path"),
+  description: z.string().max(500).optional(),
+});
+
 export const AgentDefinitionSchema = z.object({
   name: z.string().min(1).max(80),
   slug: z
@@ -40,6 +46,8 @@ export const AgentDefinitionSchema = z.object({
   tools: z.array(ToolNameSchema).default([]),
   /** Skill names, or "*" for every installed skill. */
   skills: z.array(z.string()).default([]),
+  knowledge: z.array(KnowledgeSourceSchema).max(10).refine((sources) => new Set(sources.map((s) => s.name)).size === sources.length, "Knowledge source names must be unique").optional(),
+  memory: z.boolean().optional(),
   sandbox: z.union([z.literal(0), z.literal(1)]).default(1),
   approvals: z.array(ToolNameSchema).default([]),
   budget: z

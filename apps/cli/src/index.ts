@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, InvalidArgumentError } from "commander";
 import { readFileSync } from "node:fs";
 import readline from "node:readline/promises";
 import { stdin, stdout } from "node:process";
@@ -6,8 +6,31 @@ import type { AgentSummary, Connection, GatewayProfile, Model, ModelAlias, Sessi
 import { agentFromYaml } from "@rig/core";
 import { api, sse, BASE } from "./client";
 import { c, makeRenderer } from "./render";
+import { runDoctor } from "./doctor";
 
 const program = new Command().name("rig").description("Provider-agnostic agent rig").version("0.1.0");
+
+program.command("doctor")
+  .description("Check ordinary-user setup and runtime health; provider calls require --probe")
+  .option("--offline", "only check this machine; no runtime or provider HTTP calls")
+  .option("--probe", "probe the default model through the runtime (may incur usage; updates saved entitlement)")
+  .option("--json", "print a structured diagnostic report")
+  .option("--workspace <dir>", "workspace to test using temporary files", process.env.INIT_CWD ?? process.cwd())
+  .option("--timeout <seconds>", "shell and runtime request timeout (probe has a 35-second minimum)", (value: string) => {
+    const seconds = Number(value);
+    if (!Number.isInteger(seconds) || seconds < 1 || seconds > 120) throw new InvalidArgumentError("Expected an integer from 1 to 120.");
+    return seconds;
+  }, 5)
+  .action(async (opts: { offline?: boolean; probe?: boolean; json?: boolean; workspace: string; timeout: number }) => {
+    if (opts.offline && opts.probe) throw new Error("--offline and --probe cannot be combined");
+    const report = await runDoctor({ ...opts, timeoutMs: opts.timeout * 1000, baseUrl: BASE });
+    if (opts.json) console.log(JSON.stringify(report, null, 2));
+    else {
+      for (const check of report.checks) console.log(`${check.status.toUpperCase().padEnd(4)} ${check.id}: ${check.message}`);
+      console.log(`\n${report.exitCode ? "Required checks failed." : "No required checks failed."} Warnings identify unverified or optional capabilities.`);
+    }
+    process.exitCode = report.exitCode;
+  });
 
 // ---- serve ----------------------------------------------------------------
 program

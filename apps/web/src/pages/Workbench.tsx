@@ -415,6 +415,11 @@ function Item({ it, onDecide }: { it: ThreadItem; onDecide: (t: ToolItem, d: App
             </details>
           )}
           {it.text && <Markdown text={it.text} />}
+          {it.latencyMs !== undefined && (
+            <div className="reading" title="From the start of this model turn to the completed reply, streaming included. Excludes queue, tool, and approval time.">
+              {it.latencyMs.toLocaleString()} ms
+            </div>
+          )}
         </div>
       );
     case "tool":

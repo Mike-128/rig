@@ -2,26 +2,30 @@ import { useEffect, useMemo, useState } from "react";
 import type { Connection, GatewayProfile, Model, ModelAlias } from "@rig/core/types";
 import { api } from "../api";
 import { announceSetupChange, STATUS_HELP, STATUS_LABEL, useSetup } from "../setup";
+import { ConnectionSettings, HeaderFields, headerRecord, type HeaderRow } from "../ConnectionSettings";
 
 type ModelRow = Model & { connectionName: string };
+const emptyManual = { id: "", displayName: "", dialect: "openai.chat", route: "", bodyModel: "", maxTokensField: "max_tokens", reasoning: false, query: "{}" };
 
 /** Statuses that say the model cannot be used; anything else may still work. */
 const BROKEN = new Set(["unauthorized", "forbidden", "not_found"]);
 
 /** One sentence per probe, turning the per-model results into what to do next. */
-function findings(rows: Model[], listError?: string): string[] {
+function findings(rows: Model[], listError?: string, found?: number): string[] {
   const tested = rows.filter((m) => m.status !== "listed" && m.status !== "unprobed");
   const count = (s: string) => tested.filter((m) => m.status === s).length;
   const out: string[] = [];
   if (!tested.length) out.push("Nothing was tested. Add a model manually, or use List and test.");
-  else if (count("entitled") === tested.length) out.push(tested.length === 1 ? "The tested model works with this key." : `All ${tested.length} tested models work with this key.`);
-  else if (count("entitled")) out.push(`${count("entitled")} of ${tested.length} tested models work with this key.`);
+  else if (count("entitled") === tested.length) out.push(tested.length === 1 ? "The tested model is reachable with this key." : `All ${tested.length} tested models are reachable with this key.`);
+  else if (count("entitled")) out.push(`${count("entitled")} of ${tested.length} tested models are reachable with this key.`);
+  if (count("entitled")) out.push("Reachable includes a request the provider rejected only for validation, so send a chat before relying on a model.");
   if (tested.length && count("unauthorized") === tested.length) out.push("The provider rejected the key for every model: check the key, and the header it is sent in (Advanced).");
   else if (count("unauthorized")) out.push(`${count("unauthorized")} rejected the key.`);
   if (count("forbidden")) out.push(`${count("forbidden")} answered "not allowed": the key works but has no access to ${count("forbidden") === 1 ? "that model" : "those models"}.`);
   if (count("not_found")) out.push(`${count("not_found")} were not found: check the base URL, the route, and the model ids.`);
   if (count("rate_limited")) out.push(`${count("rate_limited")} were rate limited. Test them again in a minute.`);
-  if (listError) out.push(`Listing the provider's models failed: ${listError}`);
+  if (found !== undefined) out.push(`The listing returned ${found} unique id${found === 1 ? "" : "s"}.`);
+  if (listError) out.push(`Discovery: ${listError}`);
   return out;
 }
 
@@ -37,7 +41,32 @@ export function ModelsPage() {
   const [adding, setAdding] = useState(false);
 
   const [manualFor, setManualFor] = useState<string | null>(null);
-  const [manual, setManual] = useState({ id: "", dialect: "openai.chat", route: "", bodyModel: "", maxTokensField: "max_tokens", reasoning: false });
+  const [manual, setManual] = useState(emptyManual);
+  const [editingModel, setEditingModel] = useState<ModelRow | null>(null);
+  const [savingManual, setSavingManual] = useState(false);
+  const [settingsFor, setSettingsFor] = useState<string | null>(null);
+
+  function editManual(m: ModelRow) {
+    setError(null);
+    setEditingModel(m);
+    setManualFor(m.connectionId);
+    setManual({
+      id: m.providerModelId,
+      displayName: m.displayName,
+      dialect: m.dialect,
+      route: m.route,
+      bodyModel: m.bodyModel === m.providerModelId ? "" : (m.bodyModel ?? ""),
+      maxTokensField: m.params?.maxTokensField ?? "max_tokens",
+      reasoning: Boolean(m.capabilities?.reasoning),
+      query: JSON.stringify(m.query ?? {}, null, 2),
+    });
+  }
+
+  function closeManual() {
+    setManualFor(null);
+    setEditingModel(null);
+    setManual(emptyManual);
+  }
 
   const refresh = async () => {
     const [p, c, m, a] = await Promise.all([
@@ -72,13 +101,13 @@ export function ModelsPage() {
     }
   }
 
-  async function probe(conn: Connection) {
+  async function probe(conn: Connection, includeListed = false) {
     setBusy(conn.id);
     setError(null);
     try {
-      const res = await api<{ models: Model[]; listed: number; listError?: string }>(`/connections/${conn.id}/probe`, { method: "POST" });
-      const lines = findings(res.models, res.listError);
-      if (res.listed) lines.push(`The provider lists ${res.listed} more model${res.listed === 1 ? "" : "s"}; test any of them from the table.`);
+      const res = await api<{ models: Model[]; listed: number; found?: number; listError?: string }>(`/connections/${conn.id}/probe?includeListed=${includeListed}`, { method: "POST" });
+      const lines = findings(includeListed ? res.models : res.models.filter((m) => m.origin !== "listed"), res.listError, res.found);
+      if (res.listed) lines.push(`${res.listed} new model${res.listed === 1 ? " was" : "s were"} added from the listing; models you already had keep their settings.${includeListed ? "" : " Scan inventory tests them too."}`);
       const hadDefault = aliases.some((a) => a.alias === "default");
       const after = await refresh();
       // The runtime binds the default to a working model when there is none; say which it chose.
@@ -118,16 +147,38 @@ export function ModelsPage() {
     await refresh();
   }
 
-  async function addManual() {
+  async function saveManual() {
     if (!manualFor) return;
     setError(null);
+    setSavingManual(true);
     try {
-      await api(`/connections/${manualFor}/models`, { method: "POST", json: { ...manual, bodyModel: manual.bodyModel || undefined } });
-      setManualFor(null);
-      setManual({ id: "", dialect: "openai.chat", route: "", bodyModel: "", maxTokensField: "max_tokens", reasoning: false });
+      let query: unknown;
+      try {
+        query = JSON.parse(manual.query || "{}");
+      } catch {
+        throw new Error('Query parameters must be a JSON object, for example {"api-version":"2024-12-01-preview"}.');
+      }
+      if (!query || typeof query !== "object" || Array.isArray(query) || Object.values(query).some((v) => typeof v !== "string")) {
+        throw new Error("Query parameters must be an object with string values.");
+      }
+      const { id, ...fields } = manual;
+      await api(editingModel ? `/models/${encodeURIComponent(manualFor)}/${encodeURIComponent(editingModel.providerModelId)}` : `/connections/${manualFor}/models`, {
+        method: editingModel ? "PATCH" : "POST",
+        json: {
+          ...fields,
+          ...(editingModel ? {} : { id }),
+          query,
+          displayName: manual.displayName || (editingModel ? "" : undefined),
+          bodyModel: manual.bodyModel || (editingModel ? "" : undefined),
+        },
+      });
+      setReport({ connection: connections.find((c) => c.id === manualFor)?.name ?? "", lines: [editingModel ? "Model saved. Test it again to check the new settings." : "Model added. Test it to check access."] });
+      closeManual();
       await refresh();
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setSavingManual(false);
     }
   }
 
@@ -228,22 +279,59 @@ export function ModelsPage() {
                     </div>
                   </div>
                   <div className="row">
-                    <button onClick={() => probe(c)} disabled={busy === c.id}>
+                    <button onClick={() => probe(c)} disabled={busy !== null}>
                       {busy === c.id ? "Testing…" : "List and test"}
                     </button>
-                    <button onClick={() => setManualFor(manualFor === c.id ? null : c.id)}>Add a model by id</button>
+                    <button onClick={() => probe(c, true)} disabled={busy !== null} title="Lists the provider's models and tests every one, including newly listed ones. May incur usage.">
+                      Scan inventory
+                    </button>
+                    <button onClick={() => setSettingsFor(settingsFor === c.id ? null : c.id)} aria-expanded={settingsFor === c.id}>
+                      Connection settings
+                    </button>
+                    <button
+                      disabled={savingManual}
+                      onClick={() => {
+                        if (manualFor === c.id && !editingModel) closeManual();
+                        else {
+                          setEditingModel(null);
+                          setManual(emptyManual);
+                          setManualFor(c.id);
+                        }
+                      }}
+                    >
+                      Add a model by id
+                    </button>
                     <button className="danger" onClick={() => removeConnection(c)}>
                       Remove
                     </button>
                   </div>
                 </div>
+                {settingsFor === c.id && (
+                  <ConnectionSettings
+                    key={c.id}
+                    connection={c}
+                    onSaved={async () => {
+                      await refresh();
+                    }}
+                    onClose={() => setSettingsFor(null)}
+                  />
+                )}
                 {manualFor === c.id && (
                   <div className="subsection">
+                    <h4>{editingModel ? `Edit ${editingModel.displayName}` : "Add a model by id"}</h4>
                     <div className="grid2">
                       <label className="field">
                         <span>Model id</span>
-                        <input value={manual.id} onChange={(e) => setManual({ ...manual, id: e.target.value })} placeholder="e.g. llama3.1:8b" />
-                        <span className="hint">Sent in the request body unless you override it below.</span>
+                        <input value={manual.id} disabled={!!editingModel || savingManual} onChange={(e) => setManual({ ...manual, id: e.target.value })} placeholder="e.g. llama3.1:8b" />
+                        <span className="hint">
+                          {editingModel
+                            ? "The id stays fixed so agents and aliases keep working. Change the deployment in Route, or the request model below."
+                            : "Sent in the request body unless you override it below."}
+                        </span>
+                      </label>
+                      <label className="field">
+                        <span>Display name (optional)</span>
+                        <input value={manual.displayName} onChange={(e) => setManual({ ...manual, displayName: e.target.value })} />
                       </label>
                       <label className="field">
                         <span>Dialect</span>
@@ -275,11 +363,16 @@ export function ModelsPage() {
                         <input type="checkbox" checked={manual.reasoning} onChange={(e) => setManual({ ...manual, reasoning: e.target.checked })} /> Supports a reasoning effort setting
                       </label>
                     </div>
+                    <label className="field">
+                      <span>Query parameters (JSON, string values)</span>
+                      <textarea value={manual.query} onChange={(e) => setManual({ ...manual, query: e.target.value })} placeholder={'{"api-version":"2024-12-01-preview"}'} spellCheck={false} />
+                      <span className="hint">Use {"{}"} for none. These override matching query parameters in Route.</span>
+                    </label>
                     <div className="row">
-                      <button className="primary" onClick={addManual} disabled={!manual.id || !manual.route}>
-                        Add model
+                      <button className="primary" onClick={saveManual} disabled={!manual.id.trim() || !manual.route.trim() || savingManual}>
+                        {savingManual ? "Saving…" : editingModel ? "Save changes" : "Add model"}
                       </button>
-                      <button className="ghost" onClick={() => setManualFor(null)}>
+                      <button className="ghost" disabled={savingManual} onClick={closeManual}>
                         Cancel
                       </button>
                     </div>
@@ -336,6 +429,11 @@ export function ModelsPage() {
                           </td>
                           <td>
                             <div className="row tight end">
+                              {m.origin === "manual" && (
+                                <button className="tiny" disabled={savingManual || busy !== null} onClick={() => editManual(m)}>
+                                  Edit
+                                </button>
+                              )}
                               <button className="tiny" onClick={() => probeOne(m)} disabled={busy === m.id}>
                                 {busy === m.id ? "Testing…" : "Test"}
                               </button>
@@ -405,6 +503,7 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
   const [headerName, setHeaderName] = useState("");
+  const [headers, setHeaders] = useState<HeaderRow[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { setup } = useSetup();
@@ -429,7 +528,7 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
     try {
       const res = await api<{ connection: Connection }>("/connections", {
         method: "POST",
-        json: { name: name.trim() || suggested, profileId: profile.id, key: key || (local ? "local" : ""), baseUrl: baseUrl.trim() || undefined, headerName: headerName.trim() || undefined },
+        json: { name: name.trim() || suggested, profileId: profile.id, key: key || (local ? "local" : ""), baseUrl: baseUrl.trim() || undefined, headerName: headerName.trim() || undefined, extraHeaders: headerRecord(headers) },
       });
       setKey("");
       onAdded(res.connection);
@@ -508,6 +607,7 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
                 </label>
               )}
             </div>
+            <HeaderFields rows={headers} onChange={setHeaders} />
           </details>
         </li>
         <li>

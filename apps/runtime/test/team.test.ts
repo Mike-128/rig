@@ -180,10 +180,14 @@ describe("a shared team repo", () => {
   it("lets an agent propose team memory, which reaches teammates only after review and merge", async () => {
     await asBob("/agents/coder-2", {
       method: "PUT",
-      json: { name: "Coder 2", slug: "coder-2", model: { alias: "default" }, instructions: "x", tools: ["memory_read", "memory_write"] },
+      json: { name: "Coder 2", slug: "coder-2", model: { alias: "default" }, instructions: "x", tools: ["memory_read", "memory_write"], approvals: ["memory_write"] },
     });
     const session = await asBob<Session>("/sessions", { method: "POST", json: { agent: "coder-2" } });
     const run = await asBob<{ id: string }>(`/sessions/${session.id}/runs`, { method: "POST", json: { input: "remember for the team that the gateway needs the APIM header" } });
+    // Every memory write asks first; a team write is then reviewed again as a pull request.
+    const waiting = await waitForRun(asBob, run.id);
+    expect(waiting.status).toBe("awaiting_approval");
+    await asBob(`/runs/${run.id}/approvals/${waiting.pendingApprovals[0]}`, { method: "POST", json: { decision: "approve" } });
     expect((await waitForRun(asBob, run.id)).status).toBe("completed");
     const result = (await asBob<{ events: RunEvent[] }>(`/sessions/${session.id}`)).events.find((e) => e.type === "tool_result") as Extract<RunEvent, { type: "tool_result" }>;
     expect(result.output).toMatch(/Proposed to the team/);

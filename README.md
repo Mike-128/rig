@@ -1,8 +1,14 @@
 # Rig
 
+<p align="center">
+  <img src="docs/assets/rig-logo.png" alt="Rig mascot: a smiling rigatoni pasta wearing a tactical chest harness" width="320" />
+</p>
+
 Rig is a provider-agnostic agent harness and desktop companion. Register model keys (a provider directly, a gateway virtual key, or a local server), see which models a key can reach, then work with agents on your own projects: open a folder and the Coder agent reads, searches, edits, runs commands, and delegates to sub-agents, asking before it changes anything. Design notes are in [DESIGN.md](DESIGN.md); orientation for coding agents is in [AGENTS.md](AGENTS.md).
 
 ## Layout
+
+**Give an agent a reference library:** attach local folders or mounted network shares in the agent editor, with optional separate persistent notes. See [knowledge folders and memory](docs/knowledge-folders.md).
 
 ```
 packages/core        canonical types, adapters, gateway profiles, the agent engine, built-in tools
@@ -15,6 +21,8 @@ examples/            example agent definitions
 ```
 
 ## Run it
+
+**Using a restricted Windows work laptop?** Follow the [Windows installation and testing guide](docs/windows-setup.md). It covers installation without administrator mode, missing `pnpm.cmd`, starting the runtime, and interpreting `rig doctor` results.
 
 Requires Node 22.13 or newer (SQLite is built in) and pnpm.
 
@@ -64,6 +72,8 @@ A new install opens with *Connect a model first*; **Settings › Setup** is a ch
 
 **Permissions.** *Ask before changes* asks before every file edit and command. *Accept edits* lets edits through and still asks before commands. *Plan only* blocks anything that changes things, so the agent investigates and proposes. *Auto* runs everything the agent is allowed to use. *Always allow* on a prompt stops asking for that tool, or for that command (`npm test`, `git status`) in shell's case. A chained command never matches a rule.
 
+**Opening a folder.** In the desktop app, *Browse…* in the New session dialog opens the system folder picker. In a browser it opens Rig's own picker, which browses the machine running Rig: navigate to the project and choose *Use this folder*. Files stay in place and are not uploaded. You can still type a path, for another drive or a network share.
+
 **Project instructions.** `AGENTS.md`, `CLAUDE.md`, and `RIG.md` in the project folder go into the agent's instructions, so a project set up for Claude Code works unchanged. Your own standing instructions for every project live in `~/.rig/RIG.md`, edited in **Settings › Your instructions**.
 
 ## Settings
@@ -82,6 +92,30 @@ A new install opens with *Connect a model first*; **Settings › Setup** is a ch
 
 **The desktop app** keeps running in the tray when you close the window, so agents keep working. When one needs approval or finishes while Rig is in the background, you get a notification, and clicking it opens that session.
 
+## Updating Rig
+
+Already installed from this Git repository? Update the existing clone; you do not need to clone again or re-enter your keys.
+
+1. Finish or cancel active runs. Stop Rig and, if used, Vite with **Ctrl+C** in their terminals. Interrupted runs do not automatically resume.
+2. Open a terminal in the repository folder and run `git status --short` and `git branch --show-current`. If you have local changes, commit or stash the changes you want to keep before updating; do not discard them to force an update. The commands below target the published `main` branch.
+3. From a clean checkout, run each command separately, proceeding only if it succeeds:
+
+   ```powershell
+   git switch main
+   git pull --ff-only
+   pnpm.cmd install --frozen-lockfile
+   pnpm.cmd build
+   pnpm.cmd rig serve
+   ```
+
+   On macOS/Linux, use `pnpm` in place of `pnpm.cmd`. On Windows with the user-local installation, first restore `$env:Path = "$env:LOCALAPPDATA\rig-tools;$env:Path"`. Restore any custom `RIG_HOME`, port, proxy, and approved CA settings before starting the runtime. See the [Windows update steps](docs/windows-setup.md#restart-after-pulling-an-update).
+
+4. Leave the runtime running and reload [http://127.0.0.1:7777](http://127.0.0.1:7777), or your configured port. In another terminal, run `pnpm.cmd rig doctor` (`pnpm rig doctor` on macOS/Linux). For Vite development, also restart `pnpm.cmd dev:web` in a separate terminal and use its printed URL.
+
+Saved agents, connections, model settings, and history live in `RIG_HOME` (default `~/.rig`), separately from the source checkout. Keep the same data directory and OS account for access to saved state and keys. Do not delete that directory as part of an update. If backing it up, stop Rig first and copy the complete directory, including any SQLite `-wal` and `-shm` sidecars; OS-keychain credentials are separate.
+
+If Git refuses a fast-forward, stop and inspect the branch/local commits rather than using a hard reset. An open, unmerged PR or changes that have not been pushed will not arrive through a pull of `main`. If the UI looks unchanged after an update, confirm the build succeeded, restart the runtime, and hard-refresh the browser. `git rev-parse --short HEAD` identifies the installed source revision.
+
 ## Agents
 
 The seeded agents are **Coder** (software engineering in a project folder), **Assistant** (general chat), and **Agent Builder**. Create your own in **Agents**: instructions, model (an alias or an explicit model), tools, approvals, sandbox level, and budgets. Saving creates a versioned YAML file under `~/.rig/agents`.
@@ -89,6 +123,8 @@ The seeded agents are **Coder** (software engineering in a project folder), **As
 Tools: `file_read`, `glob`, `grep`, `file_edit`, `file_write`, `shell`, `web_fetch`, `todo_write`, `task` (sub-agents), `load_skill`, the rig management tools, and MCP tools. Read-only calls in one turn run in parallel. On Windows, `shell` uses Git Bash when it is installed, then PowerShell 7, then Windows PowerShell; set `RIG_SHELL` to choose.
 
 ### Building agents by chatting
+
+For Claude behind a gateway, see [Testing the Anthropic SDK through APIM](docs/testing-anthropic-sdk.md). The guide covers connection headers, model routes, agent settings, automated compatibility tests, and a live streaming/tool-call check. It tests Rig's Anthropic Messages integration; it does not imply Claude Code feature parity.
 
 Start a session with **Agent Builder** and describe what you want:
 
@@ -151,6 +187,23 @@ An agent gets MCP tools by listing `mcp__*` (every server; Coder has this), `mcp
 
 ## CLI
 
+Check a restricted work laptop from an ordinary terminal (no administrator mode required):
+
+```bash
+pnpm rig doctor --offline
+pnpm rig doctor --workspace "C:\path\to\repository"
+pnpm rig doctor --json
+pnpm rig doctor --probe
+```
+
+On Windows, use `pnpm.cmd` if PowerShell blocks the `pnpm.ps1` launcher; this does not change execution policy. `doctor` checks Node, in-memory SQLite, temporary writes in the workspace and data directory, a harmless command in Rig's shell, and proxy/CA environment configuration. Temporary files are removed; a missing data directory is checked through its nearest existing parent without creating it. It does not install software, change certificates, request elevation, or open the credential store directly.
+
+By default it also reads the running daemon's health and model catalog at `RIG_URL` (default `http://127.0.0.1:7777`). Start `rig serve` first, or use `--offline` to skip all HTTP checks. A healthy endpoint confirms the runtime is reachable, not that every loopback port is usable. Environment checks describe the CLI process; a separately started runtime may have different settings.
+
+`--probe` explicitly makes a minimal provider request for the **default alias only**, through the runtime, and updates saved entitlement. It may incur provider usage. A passing probe includes provider validation responses, so it does not prove successful streaming or tool execution. Use Models for detailed probe failures. `--offline` and `--probe` cannot be combined.
+
+`--timeout <seconds>` bounds each shell/runtime check (default 5, range 1–120); the provider probe has a minimum client deadline of 35 seconds to allow the runtime's 30-second probe. Exit code 1 means a required check failed; 0 means none failed, even if warnings remain. `--json` emits a versioned report with `checks` and `exitCode`; reports omit paths, keys, proxy values, and raw provider errors. A missing shell is a warning because read-only agents remain usable. SQLite may emit Node's experimental-feature warning on stderr.
+
 ```bash
 pnpm rig models profiles
 pnpm rig connections add --name gemini --profile google-gemini --key-env GEMINI_API_KEY
@@ -181,6 +234,8 @@ pnpm test
 The tests use a mock upstream that speaks both dialects, so no keys are needed. They cover the tools, permission modes and rules, the parallel and steerable engine, compaction, the full runtime flow (probe, create, run with approvals, restart, replay), skills from GitHub, a real MCP server over stdio, and two teammates sharing through a mock GitHub: share, review, merge, sync, and run.
 
 `pnpm --filter @rig/runtime demo:fresh` starts the demo as a new install, to try the setup flow; it prints the key to paste. The demo includes a mock GitHub for Settings › Team and GitHub: paste the token `demo-github-token` and connect `acme/rig-team`. It prints how to approve and merge pull requests as the reviewing teammate.
+
+The [Anthropic SDK testing guide](docs/testing-anthropic-sdk.md#automated-compatibility-test-no-provider-key) includes a focused APIM test that checks routing, headers, streamed tool arguments, approval/denial, and tool-result follow-up requests without contacting a provider.
 
 ## License
 

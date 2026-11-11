@@ -7,6 +7,8 @@ import { SETTINGS_SECTIONS, SettingsPage, type SettingsSection } from "./pages/S
 import { api } from "./api";
 import { useSetup } from "./setup";
 
+const rigLogo = new URL("../../../docs/assets/rig-logo.png", import.meta.url).href;
+
 type Page = "work" | "agents" | "skills" | "memory" | "settings";
 
 interface Health {
@@ -58,7 +60,8 @@ export function App() {
     <div className="app">
       <nav className="nav">
         <a className="brand" href="#/s" aria-label="Rig, sessions">
-          Rig
+          <img src={rigLogo} alt="" width="28" height="28" />
+          <span>Rig</span>
         </a>
         <a className={route.page === "work" ? "active" : ""} href="#/s">
           Sessions

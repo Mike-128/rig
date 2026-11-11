@@ -201,7 +201,7 @@ export class RunManager {
           mode: current.mode,
           memories: this.app.memory.list(),
         },
-        host: createHost(this.app, current.workspace),
+        host: createHost(this.app, agent, current.workspace),
         takeSteering: () => this.takeInbox(session.id),
         onAllowRule: (rule) => sessions.addAllowRule(session.id, rule),
         runSubagent: (req, ctx) => this.runSubagent(run, current, agent, req, ctx),
@@ -307,7 +307,7 @@ export class RunManager {
       signal: ctx.signal,
       skills: this.app.skills.list(session.workspace),
       prompt: { project: loadProjectInstructions(session.workspace, this.app.config.home), env: environmentFacts(session.workspace) },
-      host: createHost(this.app, session.workspace),
+      host: createHost(this.app, agent, session.workspace),
       requestApproval: async () => "deny",
     })) {
       if (ev.type === "tool_call") progress(`  ${ev.name} ${briefInput(ev.input)}`);

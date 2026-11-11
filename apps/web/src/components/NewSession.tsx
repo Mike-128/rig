@@ -3,6 +3,7 @@ import type { AgentSummary, PermissionMode, Session } from "@rig/core/types";
 import { api } from "../api";
 import { desktop } from "../desktop";
 import type { Settings } from "../setup";
+import { FolderPicker } from "../FolderPicker";
 
 export const MODE_LABEL: Record<PermissionMode, string> = {
   default: "Ask before changes",
@@ -36,6 +37,7 @@ export function NewSessionDialog({ agents, folder: initialFolder, onCreated, onC
   const [prefs, setPrefs] = useState<Settings>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
 
   useEffect(() => {
     api<{ path: string }[]>("/projects").then(setRecent).catch(() => {});
@@ -87,9 +89,25 @@ export function NewSessionDialog({ agents, folder: initialFolder, onCreated, onC
               onChange={(e) => setFolder(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && !busy && start()}
             />
-            {desktop && <button onClick={browse}>Browse…</button>}
+            {desktop ? (
+              <button onClick={browse}>Browse…</button>
+            ) : (
+              <button type="button" onClick={() => setPicking(!picking)} aria-expanded={picking}>
+                Browse…
+              </button>
+            )}
           </div>
         </label>
+        {picking && (
+          <FolderPicker
+            initialPath={folder}
+            onClose={() => setPicking(false)}
+            onSelect={(f) => {
+              setFolder(f);
+              setPicking(false);
+            }}
+          />
+        )}
         {recent.length > 0 && (
           <div className="recent">
             {recent.slice(0, 8).map((r) => (
