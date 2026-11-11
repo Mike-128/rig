@@ -12,6 +12,7 @@ const BLANK = { name: "", description: "", body: "" };
 const SOURCE_LABEL: Record<SkillSummary["source"], string> = {
   bundled: "bundled",
   user: "yours",
+  team: "team",
   claude: "Claude Code",
   project: "project",
 };
@@ -140,6 +141,12 @@ export function SkillsPage({ initialName }: { initialName?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [installing, setInstalling] = useState(false);
+  const [teamConnected, setTeamConnected] = useState(false);
+  useEffect(() => {
+    api<{ config?: unknown }>("/team")
+      .then((t) => setTeamConnected(Boolean(t.config)))
+      .catch(() => {});
+  }, []);
 
   const refresh = () => api<SkillsResponse>("/skills").then(setData);
 
@@ -293,6 +300,32 @@ export function SkillsPage({ initialName }: { initialName?: string }) {
                   {detail.name} <span className="badge">{SOURCE_LABEL[detail.source]}</span> <span className="badge">{detail.hash}</span>
                 </h2>
                 <div className="row">
+                  {teamConnected && ["user", "claude", "project"].includes(detail.source) && (
+                    <button
+                      onClick={async () => {
+                        setError(null);
+                        try {
+                          await api("/team/share", { method: "POST", json: { kind: "skill", name: detail.name } });
+                          setMsg("Queued for the team. Open the pull request on the Team page.");
+                        } catch (e) {
+                          setError((e as Error).message);
+                        }
+                      }}
+                    >
+                      Share with team
+                    </button>
+                  )}
+                  {detail.source === "team" && (
+                    <button
+                      className="danger"
+                      onClick={async () => {
+                        await api("/team/remove", { method: "POST", json: { kind: "skill", name: detail.name } });
+                        setMsg("Proposed removing this skill from the team. Open the pull request on the Team page.");
+                      }}
+                    >
+                      Propose removal
+                    </button>
+                  )}
                   {detail.origin && (
                     <button
                       onClick={async () => {

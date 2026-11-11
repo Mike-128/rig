@@ -4,6 +4,7 @@ import { fileWriteTool } from "./builtin/file_write";
 import { fileEditTool } from "./builtin/file_edit";
 import { globTool, grepTool } from "./builtin/search";
 import { taskTool, todoWriteTool } from "./builtin/agentic";
+import { memoryReadTool, memoryWriteTool } from "./builtin/memory";
 import { shellTool } from "./builtin/shell";
 import { webFetchTool } from "./builtin/web_fetch";
 import { loadSkillTool, skillListTool, skillWriteTool } from "./builtin/skills";
@@ -21,6 +22,8 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolSpec> = {
   todo_write: todoWriteTool,
   task: taskTool,
   load_skill: loadSkillTool,
+  memory_read: memoryReadTool,
+  memory_write: memoryWriteTool,
   agent_list: agentListTool,
   agent_read: agentReadTool,
   agent_write: agentWriteTool,

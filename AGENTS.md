@@ -45,6 +45,9 @@ apps/runtime/           the local daemon (Hono API + loopback proxy + SQLite)
   src/mcp.ts            MCP client manager: ~/.rig/mcp.json -> tools named mcp__<server>__<tool>
   src/project.ts        AGENTS.md / CLAUDE.md / RIG.md loading and platform facts for the prompt
   src/github-skills.ts  skill install from GitHub (preview, fetch, provenance)
+  src/github.ts         GitHub sign-in as the user (gh CLI token, PAT, device flow) and REST client; EMU and ghe.com hosts
+  src/team.ts           team repo: sync over the REST API, change queue, pull requests built with the Git Data API
+  src/stores/memory.ts  personal memory (~/.rig/memory) plus team memory read from the synced repo
   test/demo.ts          the whole app against the mock model in a throwaway home (`pnpm --filter @rig/runtime demo`)
 
 apps/web/               React UI (Sessions workbench, Agents, Skills, MCP, Models), SSE-driven
@@ -102,6 +105,16 @@ Events are split deliberately: **transient** events (`text_delta`, `reasoning_de
 
 `policyForAgent(agent, tools, { mode, rules })` reads the session's mode and "always allow" rules on every call, so changes apply mid-run. Modes: `default` (the agent's approval list), `acceptEdits` (file_edit/file_write pass), `plan` (side-effecting tools denied with an explanation), `auto` (everything the agent may use). MCP tools that are not read-only are always approval-gated. An "always" approval records `allowRuleFor(name, input)`: the tool name, or `shell:<first word [+ subcommand]>`; `ruleMatches` never lets a shell rule match a command containing `; & | ` $ < >` or a newline.
 
+### Team sharing
+
+`TeamManager` keeps a read-only copy of the team repo's default branch under `~/.rig/team/repo`, synced over the REST API (commit → recursive tree → changed blobs; a manifest of blob shas makes syncs incremental). There is no git binary and no local clone. Writes never touch the default branch: `stage()` queues a change, and `openPullRequest()` builds blobs → tree on the base tree → commit → `rig/<login>/<stamp>` ref → pull request, all as the signed-in user. Review state comes back from `/pulls/:n/reviews`; a merged pull request is picked up by the next sync.
+
+Team content plugs into the existing stores as one more source: `AgentStore` reads `repo/agents/*.yaml` (local shadows team; team agents are never written locally), `SkillStore` adds a `team` layer between user and Claude Code, and `MemoryStore` reads `repo/memory/*.md`. Shared agents must bind to an alias, since connections are per person; personal skills an agent lists are staged alongside it. `memory_write` with scope `team` stages a change with `origin: "agent"` and says plainly that nothing is in effect until a human merges it.
+
+### Memory
+
+One fact per markdown file with YAML frontmatter (`name`, `description`, `type`, `author`, `updated`), parsed in `packages/core/src/memory`. Descriptions go into the system prompt under "Memory" when the agent has `memory_read`, framed as possibly stale context that is never instructions; bodies load through `memory_read`. Personal writes apply at once; team writes are staged.
+
 ### Agent definitions
 
 Versioned YAML in `~/.rig/agents/<slug>.yaml`, previous versions archived under `history/`. The YAML file is the shareable artifact; SQLite only indexes it. Saving identical content does **not** bump the version.
@@ -127,7 +140,7 @@ Requires Node 22.13+ (uses the built-in `node:sqlite`) and pnpm.
 ```bash
 pnpm install
 pnpm typecheck          # all four packages
-pnpm test               # 78 tests: 46 core + 32 runtime
+pnpm test               # 87 tests: 46 core + 41 runtime
 pnpm build              # builds the web UI into apps/web/dist
 pnpm dev:runtime        # runtime on :7777 (tsx watch)
 pnpm dev:web            # Vite on :5173, proxies /api to :7777
@@ -160,6 +173,9 @@ When you fix a provider-compatibility bug, encode it in the mock so it becomes a
   profiles/         user-supplied gateway profiles (JSON)
   workspaces/       per-session scratch directories (sessions without a project folder)
   mcp.json          MCP servers, Claude Code's mcpServers format
+  memory/           personal memory, one note per .md file
+  github.json       who is signed in to GitHub, and on which host (the token is in the keychain)
+  team/             team.json (repo), repo/ (synced copy), manifest.json, pending.json (queued changes), prs.json
   RIG.md            the user's standing instructions for every project (optional)
 ```
 
@@ -167,7 +183,7 @@ Keys live in the **OS keychain** under service `rig` (legacy service `harness` i
 
 Sessions carry `mode` and `allow_rules` columns, added by an additive migration in `db.ts` (`migrate()`); follow that pattern for new columns.
 
-Env: `RIG_HOME`, `RIG_PORT` (default 7777), `RIG_MAX_RUNS` (default 4), `RIG_URL` (clients and the desktop shell), `RIG_SHELL`, `RIG_HOTKEY`, `RIG_NODE` (Node used by the desktop shell to start the runtime), `RIG_CLAUDE_SKILLS`, `GITHUB_TOKEN`.
+Env: `RIG_HOME`, `RIG_PORT` (default 7777), `RIG_MAX_RUNS` (default 4), `RIG_URL` (clients and the desktop shell), `RIG_SHELL`, `RIG_HOTKEY`, `RIG_NODE` (Node used by the desktop shell to start the runtime), `RIG_CLAUDE_SKILLS`, `GITHUB_TOKEN` (public skill installs only; the team sign-in is separate).
 
 ---
 
@@ -206,7 +222,10 @@ These cost real debugging time. They are not documented anywhere obvious.
 9. **Compaction is an event, not a rewrite.** Never delete or edit earlier events to shrink context; append `compacted` and let the projection restart from it.
 10. **Model output is hostile HTML.** The UI sanitizes markdown with DOMPurify and escapes raw HTML; the desktop shell adds a strict CSP and keeps the window on Rig's origin. The page holds the approve buttons, so script injection would be a privilege escalation.
 11. **A project's own config never runs code by itself.** MCP servers come only from `~/.rig/mcp.json`; a repository's `.mcp.json` is not loaded. Project instruction files and project skills are text and are read, but they cannot add tools.
-12. **The desktop shell holds no agent logic.** It finds or starts the runtime and talks to it over the same HTTP API as the browser. Its preload exposes exactly `pickFolder` and `openPath`.
+12. **Nothing reaches the team without review.** Rig never writes to the team repo's default branch; every change is a branch and a pull request opened as the signed-in user, and the repository's protection and reviews decide. Agents can only queue team memory, never merge it.
+13. **The team repo is not storage.** Only `TEAM_PATHS` (`agents/`, `skills/`, `memory/`, `README.md`, `rig-team.json`) are synced or written, with size caps; extending that list is a design decision, not a convenience.
+14. **The GitHub token stays in the runtime**, in the keychain under `github:<host>`, like model keys. The UI and API see only the login.
+15. **The desktop shell holds no agent logic.** It finds or starts the runtime and talks to it over the same HTTP API as the browser. Its preload exposes exactly `pickFolder` and `openPath`.
 
 ---
 
@@ -228,6 +247,7 @@ These cost real debugging time. They are not documented anywhere obvious.
 - **Repo folder is still `C:\Users\Michael\Harness`** on the author's machine while the project is Rig. Cosmetic.
 - **`@rig` npm scope is unverified.** Irrelevant while every package is `private: true`.
 - **Built since v0.2:** the workbench entry point (§8) with project folders, sub-agents via the `task` tool (one level, results only, no run tree in the UI), MCP tool sources, permission modes, steering, and compaction.
+- **Team sharing built (v0.4):** GitHub sign-in (gh CLI, token, device flow), the team repo with reviewed pull requests, team agents, skills, and memory. Not yet: project-scoped memory inside a code repo, handoffs between teammates' sessions, notifying when a teammate's pull request needs your review, and webhooks instead of five-minute polling.
 - **Not yet:** a project's `.mcp.json` with per-project approval; MCP resources and prompts (tools only); OAuth for remote MCP servers; image input in the composer; a run tree view for sub-agents; checkpoints/undo of file edits; background shell processes; packaging the desktop app as an installer (it runs from the repo with system Node); handoffs and declarative workflows (§6.10); the enterprise control plane (§7); the vendor SDK engines (§6.4).
 
 The engine contract in `DESIGN.md` §6.4 is the intended seam for those vendor engines: they execute an engine-neutral Agent Definition and emit the same `RunEvent` stream, so tracing, policy, and halts stay uniform.

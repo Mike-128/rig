@@ -9,6 +9,9 @@ import type { ProfileStore } from "./stores/profiles";
 import type { SkillStore } from "./stores/skills";
 import type { RunManager } from "./scheduler";
 import type { McpManager } from "./mcp";
+import type { GitHubAuth } from "./github";
+import type { TeamManager } from "./team";
+import type { MemoryStore } from "./stores/memory";
 
 export interface AppContext {
   config: RuntimeConfig;
@@ -22,4 +25,7 @@ export interface AppContext {
   skills: SkillStore;
   runs: RunManager;
   mcp: McpManager;
+  github: GitHubAuth;
+  team: TeamManager;
+  memory: MemoryStore;
 }

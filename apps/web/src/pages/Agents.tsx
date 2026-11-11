@@ -6,9 +6,11 @@ import type { McpServerStatus } from "./Mcp";
 
 type ModelRow = Model & { connectionName: string };
 
-const WORKSPACE_TOOLS = ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill"] as const;
+const WORKSPACE_TOOLS = ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill", "memory_read", "memory_write"] as const;
 
 const TOOL_HELP: Record<string, string> = {
+  memory_read: "Read notes from earlier sessions, yours and the team's. Read-only.",
+  memory_write: "Save notes for future sessions. Team notes are proposed through a pull request.",
   file_read: "Read files (with line numbers and ranges) and list directories inside the workspace. Read-only.",
   glob: "Find files by name pattern. Read-only.",
   grep: "Search file contents with a regular expression. Read-only.",
@@ -175,7 +177,36 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
     return res.ok;
   }
 
+  const current = agents.find((a) => a.slug === editing);
+  const isTeam = current?.source === "team";
+
+  /** A team agent is changed by proposing it: the edit becomes a pull request, nothing changes locally. */
+  async function proposeToTeam() {
+    if (!editing) return;
+    setMsg(null);
+    try {
+      const res = await api<{ ok: boolean; issues: ValidationIssue[] }>(`/team/agents/${editing}`, { method: "PUT", json: toInput(form) });
+      setIssues(res.issues);
+      setMsg("Proposed to the team. Open the pull request on the Team page.");
+    } catch (e) {
+      const err = e as { body?: { issues?: ValidationIssue[] }; message: string };
+      setIssues(err.body?.issues ?? [{ path: "", message: err.message, severity: "error" }]);
+    }
+  }
+
+  async function share() {
+    if (!editing) return;
+    setMsg(null);
+    try {
+      const r = await api<{ staged: { kind: string; name: string }[] }>("/team/share", { method: "POST", json: { kind: "agent", name: editing } });
+      setMsg(`Queued for the team: ${r.staged.map((s) => `${s.kind} ${s.name}`).join(", ")}. Open the pull request on the Team page.`);
+    } catch (e) {
+      setIssues([{ path: "", message: (e as Error).message, severity: "error" }]);
+    }
+  }
+
   async function save() {
+    if (isTeam) return proposeToTeam();
     setMsg(null);
     const slug = form.slug || slugify(form.name);
     const body = { ...toInput(form), slug };
@@ -230,9 +261,13 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
   }
 
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
+  const [teamConnected, setTeamConnected] = useState(false);
   useEffect(() => {
     api<{ servers: McpServerStatus[] }>("/mcp")
       .then((r) => setMcpServers(r.servers))
+      .catch(() => {});
+    api<{ config?: unknown }>("/team")
+      .then((t) => setTeamConnected(Boolean(t.config)))
       .catch(() => {});
   }, []);
 
@@ -274,7 +309,10 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
         <h3>Library</h3>
         {agents.map((a) => (
           <a key={a.slug} className={`list-item ${a.slug === editing ? "active" : ""}`} href={`#/agents/${a.slug}`} onClick={() => setEditing(a.slug)}>
-            <div>{a.name}</div>
+            <div>
+              {a.name} {a.source === "team" && <span className="badge">team</span>}
+              {a.inTeam && <span className="badge" title="Your local copy shadows the team's version">yours · in team</span>}
+            </div>
             <div className="sub">
               {a.slug} · v{a.version}
             </div>
@@ -296,17 +334,34 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
               {editing && (
                 <>
                   <button onClick={runIt}>Run in chat</button>
+                  {!isTeam && teamConnected && (
+                    <button onClick={share} title="Propose this agent to the team through a pull request">
+                      {current?.inTeam ? "Propose update to team" : "Share with team"}
+                    </button>
+                  )}
                   <a className="btn" href={`/api/agents/${editing}/export`} download={`${editing}.yaml`}>
                     Export
                   </a>
-                  <button className="danger" onClick={remove}>
-                    Delete
-                  </button>
+                  {isTeam ? (
+                    <button
+                      className="danger"
+                      onClick={async () => {
+                        await api("/team/remove", { method: "POST", json: { kind: "agent", name: editing } });
+                        setMsg("Proposed removing this agent from the team. Open the pull request on the Team page.");
+                      }}
+                    >
+                      Propose removal
+                    </button>
+                  ) : (
+                    <button className="danger" onClick={remove}>
+                      Delete
+                    </button>
+                  )}
                 </>
               )}
               <button onClick={validate}>Validate</button>
-              <button className="primary" onClick={save} disabled={!form.name.trim() || !form.instructions.trim()}>
-                Save
+              <button className="primary" onClick={save} disabled={!form.name.trim() || !form.instructions.trim()} title={isTeam ? "Team agents change through a reviewed pull request" : undefined}>
+                {isTeam ? "Propose change" : "Save"}
               </button>
             </div>
           </div>

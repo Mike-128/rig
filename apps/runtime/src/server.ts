@@ -1,6 +1,6 @@
 import { serve, type ServerType } from "@hono/node-server";
 import type { RuntimeConfig } from "./config";
-import { buildApp, type BuiltApp } from "./app";
+import { buildApp, type BuildOptions, type BuiltApp } from "./app";
 
 export interface RunningServer extends BuiltApp {
   server: ServerType;
@@ -9,7 +9,7 @@ export interface RunningServer extends BuiltApp {
 }
 
 /** Build the app and listen. With port 0 the OS picks a port and the proxy origin is updated to match. */
-export async function startServer(overrides: Partial<RuntimeConfig> = {}, opts: { fileSecrets?: boolean } = {}): Promise<RunningServer> {
+export async function startServer(overrides: Partial<RuntimeConfig> = {}, opts: BuildOptions = {}): Promise<RunningServer> {
   const built = await buildApp(overrides, opts);
   const { app, hono } = built;
   let server!: ServerType;

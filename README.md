@@ -7,7 +7,7 @@ Rig is a provider-agnostic agent harness and desktop companion. Register model k
 ```
 packages/core        canonical types, adapters, gateway profiles, the agent engine, built-in tools
 apps/runtime         local daemon: API, loopback proxy, SQLite event log, keychain, scheduler, MCP
-apps/web             React UI: Sessions (the workbench), Agents, Skills, MCP, Models
+apps/web             React UI: Sessions (the workbench), Agents, Skills, Memory, Team, MCP, Models
 apps/desktop         Electron shell: window, tray, global hotkey, notifications, folder picker
 apps/cli             rig CLI
 apps/runtime/skills  bundled skills
@@ -99,6 +99,27 @@ Rig finds skills in four places, and on a name clash the more specific wins:
 
 **Use them:** type `/name` in a session to run a skill directly, attach skills to an agent, or give an agent every skill with `skills: ["*"]` (Coder has this).
 
+## Memory
+
+Agents with `memory_read` and `memory_write` (Coder has both) keep short notes between sessions: decisions and why, conventions, gotchas, preferences. One fact per file, each with a one-line description; the descriptions sit in every session's prompt and the agent reads a note when it is relevant. **Personal** memory lives in `~/.rig/memory` and is saved directly. **Team** memory lives in the team repo and changes only through a reviewed pull request. Manage both on the **Memory** page.
+
+## Team
+
+A small team shares agents, skills, and memory through a GitHub repository. Everyone keeps their own keys and models; agents bind to aliases such as `default`, which each person maps to a model on their own machine.
+
+1. **Create a private repository** for the team, and protect its default branch: require a pull request review before merging. Rig warns if the branch is unprotected. A `CODEOWNERS` file can route agent and memory changes to specific reviewers.
+2. **Sign in** on the **Team** page. Rig acts as you on GitHub, and works with Enterprise Managed Users on github.com or on a data-residency host such as `acme.ghe.com`:
+   - **GitHub CLI** (recommended): run `gh auth login --hostname <host>` once, then click *Use gh sign-in*.
+   - **Token**: a fine-grained token for the team repo with Contents and Pull requests set to read and write.
+   - **Browser sign-in**: needs the client ID of an OAuth app your enterprise has approved.
+3. **Connect the repository** (`owner/name` or its URL). The first person sets up an empty repo with one click.
+4. **Share.** *Share with team* on an agent or skill, a team memory on the Memory page, or an agent's own `memory_write` to the team: each queues a change. *Open pull request* on the Team page turns the queue into one branch, commit, and pull request in your name. Personal skills an agent uses go with it.
+5. **Review on GitHub.** Teammates review and merge as they would any pull request. Rig shows each pull request's review state, and everyone picks up merged changes at startup, every five minutes, or with *Sync now*.
+
+Team agents are read-only on each machine: editing one proposes a change instead of saving it. A personal agent with the same slug shadows the team's, so you can try changes before proposing them.
+
+The repository holds definitions, not deliverables. Rig reads and writes only `agents/`, `skills/`, `memory/`, `README.md`, and `rig-team.json`, with size limits (memory notes up to 8,000 characters, files up to 1 MB, skills up to 5 MB), and agents have no way to write anything else into it. Rig never pushes to the default branch.
+
 ## MCP
 
 Rig connects to Model Context Protocol servers and offers their tools to agents. In the **MCP** page, edit `~/.rig/mcp.json`. It uses the same `mcpServers` format as Claude Code, so entries can be pasted across:
@@ -131,7 +152,7 @@ pnpm rig chat --agent assistant
 | `RIG_PORT` | `7777` | Runtime port |
 | `RIG_SHELL` | auto | `bash`, `pwsh`, or `powershell` for the shell tool |
 | `RIG_HOTKEY` | `CommandOrControl+Shift+Space` | Desktop show/hide hotkey |
-| `GITHUB_TOKEN` | | GitHub access for skill installs |
+| `GITHUB_TOKEN` | | GitHub access for skill installs from public repos (the team sign-in is separate) |
 
 ## Where keys live
 
@@ -143,7 +164,9 @@ Keys go into the OS keychain (Windows Credential Manager, macOS Keychain, Linux 
 pnpm test
 ```
 
-The tests use a mock upstream that speaks both dialects, so no keys are needed. They cover the tools, permission modes and rules, the parallel and steerable engine, compaction, the full runtime flow (probe, create, run with approvals, restart, replay), skills from GitHub, and a real MCP server over stdio.
+The tests use a mock upstream that speaks both dialects, so no keys are needed. They cover the tools, permission modes and rules, the parallel and steerable engine, compaction, the full runtime flow (probe, create, run with approvals, restart, replay), skills from GitHub, a real MCP server over stdio, and two teammates sharing through a mock GitHub: share, review, merge, sync, and run.
+
+The demo includes a mock GitHub for the Team page: paste the token `demo-github-token` and connect `acme/rig-team`. It prints how to approve and merge pull requests as the reviewing teammate.
 
 ## License
 

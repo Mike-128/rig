@@ -89,6 +89,12 @@ export function chooseTool(messages: { role: string; content: unknown }[], tools
     };
   }
   if (names.has("task") && /\bdelegate\b/i.test(text)) return { name: "task", args: { description: "Survey the project", prompt: "find every file" } };
+  if (names.has("memory_write") && /\bremember for the team\b/i.test(text)) {
+    return {
+      name: "memory_write",
+      args: { scope: "team", name: "gateway-needs-apim-header", type: "gotcha", description: "The gateway rejects Authorization: Bearer", body: "Send the key in Ocp-Apim-Subscription-Key; SDK v1 defaults to Bearer." },
+    };
+  }
   // "mcp <tool>" calls the first offered MCP tool whose name contains <tool>.
   const mcp = text.match(/\bmcp (\S+)/i);
   if (mcp) {

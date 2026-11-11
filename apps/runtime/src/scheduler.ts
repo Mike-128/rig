@@ -199,6 +199,7 @@ export class RunManager {
           project: loadProjectInstructions(current.workspace, this.app.config.home),
           env: environmentFacts(current.workspace),
           mode: current.mode,
+          memories: this.app.memory.list(),
         },
         host: createHost(this.app, current.workspace),
         takeSteering: () => this.takeInbox(session.id),

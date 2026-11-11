@@ -74,6 +74,7 @@ const CODER: AgentDefinitionInput = {
 - Verify. After changing code, run the relevant build, type check, linter, or tests with shell, and fix what you broke. If you cannot verify something, say so plainly.
 - Use task to delegate broad searches or independent pieces of work to sub-agents, several in one turn when they are independent. Give each a complete prompt; they cannot see this conversation.
 - Batch independent read-only calls (several file_read, glob, or grep calls) in a single turn; they run in parallel.
+- Use memory. Check your memory index for notes that bear on the task. When you learn something a future session should know (a decision and its reason, a convention, a gotcha that cost time), save it with memory_write: personal for this user, team when it helps everyone on this codebase.
 
 ## Judgment
 
@@ -85,10 +86,10 @@ const CODER: AgentDefinitionInput = {
 ## Communicating
 
 Be concise and direct. Lead with the outcome. Reference code as path:line. Report failures honestly with the relevant output, and do not claim something works that you have not checked.`,
-  tools: ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill", "mcp__*"],
+  tools: ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill", "memory_read", "memory_write", "mcp__*"],
   skills: ["*"],
   sandbox: 1,
-  approvals: ["file_edit", "file_write", "shell"],
+  approvals: ["file_edit", "file_write", "shell", "memory_write"],
   budget: { maxTurns: 200 },
   params: {},
 };

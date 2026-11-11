@@ -37,6 +37,7 @@ export class SkillStore {
     private userDir: string,
     private bundledDir?: string,
     private claudeDir: string | null = null,
+    private teamDir: () => string | undefined = () => undefined,
   ) {
     mkdirSync(userDir, { recursive: true });
   }
@@ -61,7 +62,7 @@ export class SkillStore {
         this.issues.push({ dir: skillDir, error: parsed.error });
         continue;
       }
-      if (parsed.name !== entry.name && source !== "claude" && source !== "project") {
+      if (parsed.name !== entry.name && source !== "claude" && source !== "project" && source !== "team") {
         this.issues.push({ dir: skillDir, error: `frontmatter name "${parsed.name}" does not match the folder name "${entry.name}"` });
         continue;
       }
@@ -90,12 +91,14 @@ export class SkillStore {
     return out.sort();
   }
 
-  /** Every skill visible from a workspace (or globally, without one), most specific first on clashes. */
+  /** Every skill visible from a workspace (or globally, without one): project, user, team, Claude Code, bundled. */
   all(workspace?: string): Skill[] {
     this.issues = [];
     const layers: Skill[][] = [];
     if (workspace) for (const d of PROJECT_SKILL_DIRS) layers.push(this.scanDir(path.join(workspace, d), "project"));
     layers.push(this.scanDir(this.userDir, "user"));
+    const team = this.teamDir();
+    if (team) layers.push(this.scanDir(path.join(team, "skills"), "team"));
     if (this.claudeDir) layers.push(this.scanDir(this.claudeDir, "claude"));
     if (this.bundledDir) layers.push(this.scanDir(this.bundledDir, "bundled"));
     const byName = new Map<string, Skill>();

@@ -4,9 +4,11 @@ import { ModelsPage } from "./pages/Models";
 import { SkillsPage } from "./pages/Skills";
 import { WorkbenchPage } from "./pages/Workbench";
 import { McpPage } from "./pages/Mcp";
+import { TeamPage } from "./pages/Team";
+import { MemoryPage } from "./pages/Memory";
 import { api } from "./api";
 
-type Page = "work" | "agents" | "models" | "skills" | "mcp";
+type Page = "work" | "agents" | "models" | "skills" | "mcp" | "memory" | "team";
 
 interface Health {
   ok: boolean;
@@ -17,7 +19,7 @@ interface Health {
 function pageFromHash(): { page: Page; param?: string } {
   const h = location.hash.replace(/^#\/?/, "");
   const [p, param] = h.split("/");
-  if (p === "agents" || p === "models" || p === "skills" || p === "mcp") return { page: p, param };
+  if (p === "agents" || p === "models" || p === "skills" || p === "mcp" || p === "memory" || p === "team") return { page: p, param };
   // "chat" is the pre-workbench route; old links keep working.
   if (p === "s" || p === "chat") return { page: "work", param };
   return { page: "work" };
@@ -55,6 +57,12 @@ export function App() {
         <a className={route.page === "skills" ? "active" : ""} href="#/skills">
           Skills
         </a>
+        <a className={route.page === "memory" ? "active" : ""} href="#/memory">
+          Memory
+        </a>
+        <a className={route.page === "team" ? "active" : ""} href="#/team">
+          Team
+        </a>
         <a className={route.page === "mcp" ? "active" : ""} href="#/mcp">
           MCP
         </a>
@@ -72,6 +80,8 @@ export function App() {
         {route.page === "skills" && <SkillsPage initialName={route.param} />}
         {route.page === "models" && <ModelsPage />}
         {route.page === "mcp" && <McpPage />}
+        {route.page === "memory" && <MemoryPage />}
+        {route.page === "team" && <TeamPage />}
       </main>
     </div>
   );

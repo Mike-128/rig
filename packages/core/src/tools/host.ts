@@ -1,4 +1,5 @@
 import type { Skill, SkillSummary } from "../skills/types";
+import type { Memory, MemoryInput, MemoryScope, MemorySummary } from "../memory/types";
 
 export interface HostAgentSummary {
   slug: string;
@@ -39,4 +40,9 @@ export interface HostServices {
   readSkill(name: string): Skill | undefined;
   readSkillFile(name: string, file: string): string | undefined;
   writeSkill(name: string, description: string, body: string): { ok: boolean; error?: string; hash?: string };
+  /** Personal and team memories. Optional so hosts without memory still satisfy the interface. */
+  listMemories?(): MemorySummary[];
+  readMemory?(name: string, scope?: MemoryScope): Memory | undefined;
+  /** Personal writes apply at once; team writes are staged for a reviewed pull request. */
+  writeMemory?(scope: MemoryScope, change: MemoryInput | { name: string; delete: true }): Promise<{ ok: boolean; error?: string; message?: string }>;
 }

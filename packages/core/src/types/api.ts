@@ -45,4 +45,8 @@ export interface AgentSummary {
   description?: string;
   version: number;
   updatedAt: string;
+  /** local: saved on this machine. team: from the team repo. A local agent shadows a team one of the same slug. */
+  source?: "local" | "team";
+  /** Set on a local agent when the team repo also has this slug. */
+  inTeam?: boolean;
 }

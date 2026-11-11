@@ -14,6 +14,7 @@ import type { GatewayProfile } from "@rig/core";
 import { startServer } from "../src/server";
 import { serveWebUi } from "../src/web";
 import { GOOD_KEY, startMockUpstream } from "./mock-upstream";
+import { startMockGitHub } from "./mock-github";
 
 const home = mkdtempSync(path.join(os.tmpdir(), "rig-demo-home-"));
 const project = mkdtempSync(path.join(os.tmpdir(), "rig-demo-project-"));
@@ -33,7 +34,9 @@ const profile: GatewayProfile = {
 mkdirSync(path.join(home, "profiles"), { recursive: true });
 writeFileSync(path.join(home, "profiles", "mock.json"), JSON.stringify(profile));
 
-const rt = await startServer({ home, port: Number(process.env.RIG_DEMO_PORT ?? 7790) }, { fileSecrets: true });
+const port = Number(process.env.RIG_DEMO_PORT ?? 7790);
+const github = await startMockGitHub({ tokens: { "demo-github-token": "you_demo" }, owner: "acme", repo: "rig-team", port: port + 2 });
+const rt = await startServer({ home, port }, { fileSecrets: true, github: { apiBase: github.url } });
 serveWebUi(rt.hono);
 const api = (p: string, body: unknown, method = "POST") =>
   fetch(`http://127.0.0.1:${rt.port}/api${p}`, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
@@ -43,3 +46,5 @@ await api("/sessions", { agent: "coder", workspace: project, title: "Demo projec
 
 console.log(`\n  Rig demo on http://127.0.0.1:${rt.port}\n  home    ${home}\n  project ${project}\n`);
 console.log("  Try: read hello.txt · edit it · run the tests · find files · plan this · delegate a search\n");
+console.log('  Team (mock GitHub): on the Team page paste the token "demo-github-token" and connect "acme/rig-team".');
+console.log(`  To act as the reviewing teammate: POST ${github.url}/__approve/<pr> or ${github.url}/__merge/<pr>\n`);
