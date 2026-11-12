@@ -65,6 +65,12 @@ export class ConnectionStore {
     this.db.prepare("UPDATE models SET status = 'unprobed', status_message = NULL, last_probed_at = NULL WHERE connection_id = ?").run(id);
   }
 
+  /** Change where requests go and how the key is sent. Earlier test results were for the old endpoint. */
+  setEndpoint(id: string, baseUrl: string, auth: AuthSpec): void {
+    this.db.prepare("UPDATE connections SET base_url = ?, auth_header = ?, auth_prefix = ? WHERE id = ?").run(baseUrl, auth.headerName, auth.prefix ?? null, id);
+    this.db.prepare("UPDATE models SET status = 'unprobed', status_message = NULL, last_probed_at = NULL WHERE connection_id = ?").run(id);
+  }
+
   /** Record a replaced key. Earlier test results were for the old key, so they no longer apply. */
   setSecretLast4(id: string, last4: string): void {
     this.db.prepare("UPDATE connections SET secret_last4 = ? WHERE id = ?").run(last4, id);

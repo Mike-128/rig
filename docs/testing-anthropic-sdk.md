@@ -32,17 +32,17 @@ Open [http://127.0.0.1:7777](http://127.0.0.1:7777). The built UI does not requi
 | Advanced › Additional request headers | Required non-secret metadata as header/value rows, for example `x-project-code` / `demo-project` |
 | Choose the model | **I'll name the model and its route** (the default for this template), filled in with the model fields from step 3 |
 
-Click **Connect and test**. Rig stores the connection with the model you named and tests only that model on its own route; it does not request a model listing first. The template's sample routes are not added when you name a model. Use **Connection settings** to edit metadata headers on an existing connection. These values are visible in settings and are not secret storage.
+Click **Connect and test**. Rig stores the connection with the model you named and tests only that model on its own route; it does not request a model listing first. The template's sample routes are not added when you name a model. To edit metadata headers later, use the provider's **Connection** tab. These values are visible in settings and are not secret storage.
 
-If you choose **Find the models for me** instead, Rig adds the template's sample routes, which may fail on your gateway; configure your actual model with **Add a model by id** as in step 3.
+If you choose **Find the models for me** instead, Rig adds the template's sample routes, which may fail on your gateway; configure your actual model with **Add a model** on the provider's **Models** tab, as in step 3.
 
-To rotate or switch the subscription key later, use **Replace key** on the connection card. The model, aliases, headers, and agents stay as they are; earlier test results are cleared and the known models are tested with the new key.
+To fix a mistyped base URL or rotate the subscription key later, select the provider and open its **Connection** tab, change only what is wrong, and click **Save and test**. The model, aliases, headers, and agents stay as they are; earlier test results are cleared and the known models are tested with the new key.
 
 The SDK sends `anthropic-version: 2023-06-01`; Rig forwards it through the proxy. Do not put the APIM key into an additional header, agent instruction, or model query field. Do not add a native Google `anthropic_version` body field for a standard Messages endpoint.
 
 ## 3. Add the Claude model manually
 
-These fields appear under **Choose the model** in the Add a provider form, and in **Add a model by id** on an existing connection card:
+These fields appear under **Choose the model** in the Add a provider form, and in **Add a model** on an existing provider's **Models** tab:
 
 | Model field | Setting |
 | --- | --- |

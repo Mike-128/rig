@@ -1,6 +1,13 @@
 import { z } from "zod";
 
 const reserved = new Set(["host", "connection", "content-length", "content-type", "transfer-encoding", "upgrade", "trailer", "te", "keep-alive", "proxy-authorization", "proxy-authenticate", "authorization", "x-api-key", "api-key", "ocp-apim-subscription-key", "x-rig-proxy-token"]);
+const transport = new Set(["host", "connection", "content-length", "content-type", "transfer-encoding", "upgrade", "trailer", "te", "keep-alive", "x-rig-proxy-token"]);
+/** The header that carries the key: any HTTP token except transport headers and Rig's own. */
+export const AuthHeaderName = z.string().trim().refine((name) => /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) && !transport.has(name.toLowerCase()), {
+  message: "The key header must be a single HTTP header name, and cannot be a transport header.",
+});
+/** Text written before the key, such as "Bearer ". */
+export const AuthPrefix = z.string().max(40).refine((v) => /^[\x20-\x7e]*$/.test(v), { message: "The key prefix cannot contain line breaks or unsupported characters." });
 export const ExtraHeaders = z.record(z.string(), z.string()).superRefine((headers, ctx) => {
   const seen = new Set<string>();
   for (const [name, value] of Object.entries(headers)) {

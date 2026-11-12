@@ -7,6 +7,7 @@ import { ToolCard } from "../components/ToolCard";
 import { desktop, modKey, modLabel } from "../desktop";
 import { emptyThread, reduceAll, reduceEvent, type ThreadItem, type ThreadState, type ToolItem } from "../events";
 import { Markdown } from "../markdown";
+import { rigLogo } from "../logo";
 
 interface SessionDetail {
   session: Session;
@@ -524,7 +525,10 @@ function Welcome({ onNew, ready }: { onNew: (folder?: string) => void; ready?: b
   }, []);
   return (
     <div className="welcome">
-      <h1>Rig</h1>
+      {/* The logo carries the name, so it is the heading; screen readers still hear "Rig". */}
+      <h1 className="welcome-title">
+        <img className="welcome-logo" src={rigLogo} alt="Rig" width="176" height="176" />
+      </h1>
       <p className="muted">Open a project folder to work on code with an agent, or start a chat.</p>
       {ready === false && (
         <div className="setup-callout">
