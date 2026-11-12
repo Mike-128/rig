@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Connection, GatewayProfile, Model, ModelAlias } from "@rig/core/types";
 import { api } from "../api";
 import { announceSetupChange, STATUS_HELP, STATUS_LABEL, useSetup } from "../setup";
@@ -426,7 +426,9 @@ function ProviderDetail(props: {
           </div>
           <ul>
             {props.report.map((l) => (
-              <li key={l}>{l}</li>
+              <li key={l}>
+                <ClampedText text={l} lines={3} />
+              </li>
             ))}
           </ul>
         </div>
@@ -586,9 +588,7 @@ function ModelsTab({
                     {STATUS_LABEL[m.status] ?? m.status}
                   </span>
                   {m.statusMessage && (
-                    <div className="result-detail" title={m.statusMessage}>
-                      {m.statusMessage}
-                    </div>
+                    <ClampedText className="result-detail" text={m.statusMessage} lines={2} />
                   )}
                 </td>
                 <td>
@@ -628,6 +628,36 @@ function ModelsTab({
 }
 
 /** Aliases on a model: chips to remove, and a small inline box to add one. */
+/** Provider messages can run long: show the first lines, and let the reader expand the rest. */
+function ClampedText({ text, lines, className }: { text: string; lines: number; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || open) return;
+    const check = () => setOverflows(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [text, open]);
+
+  return (
+    <div className={className}>
+      <div ref={ref} className={open ? "clamp-text" : "clamp-text clamped"} style={{ "--clamp-lines": lines } as CSSProperties}>
+        {text}
+      </div>
+      {(overflows || open) && (
+        <button className="ghost tiny clamp-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? "Show less" : "Show all"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function AliasCell({ aliases, canBind, onAdd, onDelete }: { aliases: string[]; canBind: boolean; onAdd(alias: string): void; onDelete(alias: string): void }) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");

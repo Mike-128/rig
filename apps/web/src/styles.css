@@ -389,6 +389,7 @@ td {
 .issue {
   font-size: var(--text-sm);
   padding: var(--space-2xs) 0;
+  overflow-wrap: anywhere;
 }
 .issue.ok {
   color: var(--color-ok);
@@ -1402,6 +1403,9 @@ td.end-cell {
   padding-left: var(--space-md);
   color: var(--color-ink-2);
 }
+.findings li {
+  overflow-wrap: anywhere;
+}
 .findings li + li {
   margin-top: var(--space-3xs);
 }
@@ -1773,10 +1777,6 @@ label.field.filter {
   overflow-wrap: anywhere;
 }
 .result-detail {
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
   max-width: 36ch;
   margin-top: var(--space-3xs);
   font-size: var(--text-xs);
@@ -1846,4 +1846,20 @@ label.field.filter {
 }
 .provider-detail .add-provider > h3 {
   margin-top: 0;
+}
+
+/* long provider messages: the first lines, with the rest one click away */
+.clamp-text {
+  overflow-wrap: anywhere;
+}
+.clamp-text.clamped {
+  display: -webkit-box;
+  -webkit-line-clamp: var(--clamp-lines, 2);
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+button.clamp-toggle {
+  margin-top: var(--space-3xs);
+  margin-left: calc(-1 * var(--space-xs));
+  color: var(--color-ink-2);
 }

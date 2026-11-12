@@ -44,6 +44,15 @@ export function seedFromProfile(app: AppContext, conn: Connection, profile: Gate
   return profile.models.map((e) => app.models.upsert(entryToModel(conn, e)));
 }
 
+/** Longest provider message kept: enough for a JSON error, not a whole HTML error page. */
+export const MESSAGE_LIMIT = 1000;
+
+/** A provider's error text as stored and shown: whitespace collapsed, capped at MESSAGE_LIMIT. */
+export function briefMessage(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > MESSAGE_LIMIT ? `${flat.slice(0, MESSAGE_LIMIT - 1)}…` : flat;
+}
+
 /** List models through the gateway (when the profile supports it) and add unknown ones as "listed". */
 export async function discoverListed(app: AppContext, conn: Connection, profile: GatewayProfile): Promise<{ added: Model[]; found?: number; error?: string }> {
   const spec = app.connections.discovery(conn.id) ?? profile.listModels;
@@ -64,7 +73,7 @@ export async function discoverListed(app: AppContext, conn: Connection, profile:
     }
     return { added, found: new Set(ids).size };
   } catch (e) {
-    return { added: [], error: adapter.normalizeError(e).message };
+    return { added: [], error: briefMessage(adapter.normalizeError(e).message) };
   }
 }
 
@@ -73,7 +82,7 @@ export async function probeModel(app: AppContext, conn: Connection, model: Model
   const adapter = adapterFor(model.dialect);
   const r = await adapter.probe(adapterConnection(app, conn, model), model);
   const at = nowIso();
-  const msg = r.message ? `${r.message} (${r.latencyMs} ms)` : `${r.latencyMs} ms`;
+  const msg = r.message ? `${briefMessage(r.message)} (${r.latencyMs} ms)` : `${r.latencyMs} ms`;
   app.models.setStatus(model.id, r.status, msg, at);
   return app.models.get(model.id)!;
 }
