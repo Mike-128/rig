@@ -6,8 +6,7 @@ import { MemoryPage } from "./pages/Memory";
 import { SETTINGS_SECTIONS, SettingsPage, type SettingsSection } from "./pages/Settings";
 import { api } from "./api";
 import { useSetup } from "./setup";
-
-const rigLogo = new URL("../../../docs/assets/rig-logo.png", import.meta.url).href;
+import { rigLogo } from "./logo";
 
 type Page = "work" | "agents" | "skills" | "memory" | "settings";
 

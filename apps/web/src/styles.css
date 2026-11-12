@@ -1103,6 +1103,13 @@ pre.diff .del .sign {
   text-align: center;
   padding: var(--space-xl) var(--space-lg);
 }
+.welcome-logo {
+  display: block;
+  width: 112px;
+  height: 112px;
+  margin: 0 auto var(--space-sm);
+  object-fit: contain;
+}
 .welcome h1 {
   font-size: var(--text-3xl);
   max-width: none;
