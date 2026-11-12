@@ -81,7 +81,7 @@ A new install opens with *Connect a model first*; **Settings › Setup** is a ch
 | Section | |
 |---|---|
 | Setup | What is configured, what is missing, and the next step. |
-| Models | Providers and their keys, test results, the default model, aliases. |
+| Models | The default model and aliases, then each provider: its models and test results, its connection (base URL, key, headers, all editable in place), and model discovery. |
 | New sessions | The agent a project or a chat starts with, and the starting permission mode (`~/.rig/settings.json`). |
 | Your instructions | `~/.rig/RIG.md`. |
 | Team and GitHub | Sign-in, the team repository, queued changes, pull requests. |

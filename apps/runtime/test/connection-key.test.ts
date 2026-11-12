@@ -65,6 +65,58 @@ describe("adding a provider with a named model", () => {
   });
 });
 
+describe("editing a connection", () => {
+  it("fixes a mistyped base URL in place and keeps models and aliases", async () => {
+    const { connection } = await api<{ connection: Connection }>("/connections", "POST", {
+      name: "typo", profileId: "openai-compatible", key: GOOD_KEY, baseUrl: "http://127.0.0.1:9", models: [{ ...named, query: undefined }],
+    });
+    const broken = await api<{ models: Model[] }>(`/connections/${connection.id}/probe?discover=false`, "POST");
+    expect(broken.models[0].status).not.toBe("entitled");
+    await api(`/aliases/typo-alias`, "PUT", { connectionId: connection.id, modelId: "mock-gpt" });
+
+    const fixed = await api<Connection>(`/connections/${connection.id}`, "PATCH", { baseUrl: `${upstream.url}/` });
+    expect(fixed).toMatchObject({ id: connection.id, name: "typo", baseUrl: upstream.url, secretLast4: connection.secretLast4 });
+    const models = (await api<Model[]>("/models")).filter((m) => m.connectionId === connection.id);
+    expect(models.map((m) => [m.providerModelId, m.route, m.status])).toEqual([["mock-gpt", "/v1/chat/completions", "unprobed"]]);
+    expect((await api<{ alias: string; modelId: string }[]>("/aliases")).some((a) => a.alias === "typo-alias")).toBe(true);
+
+    const after = await api<{ models: Model[] }>(`/connections/${connection.id}/probe?discover=false`, "POST");
+    expect(after.models[0].status).toBe("entitled");
+  });
+
+  it("changes the key header, prefix, headers, and key together", async () => {
+    const { connection } = await api<{ connection: Connection }>("/connections", "POST", { name: "reshape", profileId: "openai-compatible", key: "first-key", baseUrl: upstream.url });
+    const updated = await api<Connection>(`/connections/${connection.id}`, "PATCH", {
+      headerName: "x-api-key", headerPrefix: "", extraHeaders: { "X-Team": "synthetic" }, key: "second-key-9999",
+    });
+    expect(updated).toMatchObject({ auth: { headerName: "x-api-key" }, extraHeaders: { "x-team": "synthetic" }, secretLast4: "9999" });
+    expect(updated.auth.prefix).toBeUndefined();
+    expect(await rt.app.secrets.get(connection.id)).toBe("second-key-9999");
+  });
+
+  it("rejects invalid edits without changing anything", async () => {
+    const { connection } = await api<{ connection: Connection }>("/connections", "POST", { name: "guarded", profileId: "openai-compatible", key: "guarded-key", baseUrl: upstream.url });
+    const before = (await api<Connection[]>("/connections")).find((c) => c.id === connection.id);
+    for (const body of [
+      { baseUrl: "not a url" },
+      { baseUrl: "ftp://example.com" },
+      { headerName: "Host" },
+      { headerName: "two words" },
+      { headerPrefix: "Bearer\n" },
+      { extraHeaders: { authorization: "x" } },
+      { headerName: "x-team", extraHeaders: { "x-team": "a" } },
+      { key: "  " },
+      { name: "renamed" },
+      { baseUrl: "https://ok.example", key: "" },
+    ]) {
+      expect((await call(`/connections/${connection.id}`, "PATCH", body)).status, JSON.stringify(body)).toBe(400);
+    }
+    expect((await api<Connection[]>("/connections")).find((c) => c.id === connection.id)).toEqual(before);
+    expect(await rt.app.secrets.get(connection.id)).toBe("guarded-key");
+    expect((await call(`/connections/missing`, "PATCH", { baseUrl: "https://ok.example" })).status).toBe(404);
+  });
+});
+
 describe("replacing a key", () => {
   it("keeps models and aliases, clears old results, and works with the new key", async () => {
     const { connection } = await api<{ connection: Connection }>("/connections", "POST", {

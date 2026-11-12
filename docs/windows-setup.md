@@ -138,11 +138,13 @@ Enter the key in the **Rig browser application**, not on the runtime status page
 7. For APIM, first review the custom-endpoint section below. Then click **Connect and test**. This stores the connection and sends provider requests to test models, which may incur usage. With a named model, only that model is tested and no listing request is sent. The key field clears after the connection is saved, and a summary says what the test found.
 8. Under **Default model**, choose the model agents should use. Rig picks the first reachable model when there is no default yet. **Reachable** means the provider accepted the key for that model, including a request rejected only for validation, so send a short chat before relying on it.
 
-If no models appear, or the desired Claude/GPT model is missing, confirm the endpoint and supported model IDs/routes with your gateway administrator. A gateway may require a custom profile or **Add a model by id**; do not guess routes from the key alone. One gateway key can cover both Claude and GPT if the gateway exposes both; separate direct providers need separate connections.
+If no models appear, or the desired Claude/GPT model is missing, confirm the endpoint and supported model IDs/routes with your gateway administrator. A gateway may require a custom profile or **Add a model** on the provider's **Models** tab; do not guess routes from the key alone. One gateway key can cover both Claude and GPT if the gateway exposes both; separate direct providers need separate connections.
 
-The runtime stores credentials in the OS keychain when available and otherwise reports an encrypted-file fallback at startup and in doctor results. The connection card displays only the key's last four characters. You do not need to paste the key again at each startup; Vite and the built UI use the same storage when connected to the same runtime.
+The runtime stores credentials in the OS keychain when available and otherwise reports an encrypted-file fallback at startup and in doctor results. The provider panel displays only the key's last four characters. You do not need to paste the key again at each startup; Vite and the built UI use the same storage when connected to the same runtime.
 
-To rotate or switch a key, click **Replace key** on the connection card and paste the new one. Models, aliases, headers, and agents are kept; earlier test results are cleared because they were for the old key, and Rig tests the known models with the new key. You do not need to remove and re-add the connection.
+**Settings › Models** lists your providers on the left; select one to see its **Models**, **Connection**, and **Discovery** tabs.
+
+To fix a mistyped base URL, rotate or switch a key, or change the key header, open the provider's **Connection** tab. Edit only what needs to change; leave **Key** blank to keep the current key. The hint under **Base URL** shows the full address a request goes to, which makes a typo easy to spot. Click **Save and test**. Models, aliases, and agents are kept; earlier test results are cleared because they were for the old settings, and Rig tests the models again. You do not need to remove and re-add the provider. The provider's name stays fixed because agents refer to it.
 
 ### APIM keys with a custom endpoint
 
@@ -181,52 +183,52 @@ Ask your gateway administrator for a sample request with credentials removed tha
 - The deployment/model identifier and the value sent in the JSON `model` field, if any.
 - Whether each endpoint speaks Anthropic Messages or OpenAI Chat Completions.
 
-For a simple model route, the connection's **Add a model by id** form provides **Model id**, **Display name**, **Dialect**, **Route**, **Model id in the body**, and **Query parameters**. Manually added models have an **Edit** button; the saved id stays fixed so agents and aliases keep working. For an API version, enter a JSON object such as `{"api-version":"2024-12-01-preview"}`, using the version supplied by your company. These parameters override matching values included in Route. Extra authentication headers still require a company-specific gateway profile or API configuration. Authentication requiring token acquisition/refresh needs separate validation; the APIM template does not implement that flow.
+For a simple model route, the **Add a model** form on the provider's **Models** tab provides **Model id**, **Display name**, **Dialect**, **Route**, **Model id in the body**, and **Query parameters**. Manually added models have an **Edit** button; the saved id stays fixed so agents and aliases keep working. For an API version, enter a JSON object such as `{"api-version":"2024-12-01-preview"}`, using the version supplied by your company. These parameters override matching values included in Route. Extra authentication headers still require a company-specific gateway profile or API configuration. Authentication requiring token acquisition/refresh needs separate validation; the APIM template does not implement that flow.
 
 ### Correcting a manually added model
 
-In the saved connection's model table, click **Edit** beside a manually added model. The form opens above the table with its saved values. Correct the **Route**, **Query parameters**, **Body model override**, **Dialect**, **Display name**, or token/reasoning settings, then click **Save changes**. **Cancel** leaves the saved configuration unchanged.
+On the provider's **Models** tab, click **Edit** beside a manually added model. The form opens above the table with its saved values. Correct the **Route**, **Query parameters**, **Model id in the body**, **Dialect**, **Display name**, or token/reasoning settings, then click **Save changes**. **Cancel** leaves the saved configuration unchanged.
 
-The saved model ID remains fixed to preserve agent and alias references. To change the upstream deployment, edit its path in **Route**; to change the request body's model value, use **Body model override**. Leave that override blank to use the saved ID. Use `{}` to clear separate query parameters (also remove any unwanted query from Route).
+The saved model ID remains fixed to preserve agent and alias references. To change the upstream deployment, edit its path in **Route**; to change the request body's model value, use **Model id in the body**. Leave that override blank to use the saved ID. Use `{}` to clear separate query parameters (also remove any unwanted query from Route).
 
-Saving keeps the connection/key, pricing, and aliases, resets the model to **unprobed**, and clears the previous error. Click **probe** on that row to test the corrected settings. Saving itself does not send a provider request. **Edit** is available for manually added models only.
+Saving keeps the connection/key, pricing, and aliases, resets the model to **Not tested**, and clears the previous error. Click **Test** on that row to test the corrected settings. Saving itself does not send a provider request. **Edit** is available for manually added models only.
 
 If you need help mapping a sample request, share the endpoint structure, header names, and example body with all keys/tokens removed. You may anonymize the hostname while preserving paths and query names. Never put a real key into the guide, a Git commit, or a screenshot shared for troubleshooting.
 
-After the actual model routes are configured, probe the intended model and set it as **default**, then continue below.
+After the actual model routes are configured, test the intended model and click **Make default** on its row (or choose it under **Default model**), then continue below.
 
 ### Required connection headers (for example, a charge code)
 
 If a gateway responds with a missing-header error, use the header name and value supplied by your company. A charge code is separate from your APIM key.
 
-For a new connection, open **Advanced** in the Add a provider form and use the **Additional request headers** table before clicking **Connect and test**. Click **Add header**, enter the **Header field** and **Value**, and add more rows as needed.
+For a new connection, open **Advanced** in the Add a provider form and use the **Additional request headers** table before clicking **Connect and test**. Click **Add a header**, enter the **Header** and **Value**, and add more rows as needed.
 
 For an existing saved connection:
 
-1. Open **Settings › Models** and find its saved connection card.
-2. Click **Connection settings**.
-3. Under **Additional request headers**, click **Add header** and enter the required field/value pair (for example, `x-company-charge-code` and your assigned code).
-4. Click **Save headers**. Removed rows are removed from the saved configuration too.
-5. Probe the intended model again, then try a short chat.
+1. Open **Settings › Models** and select the provider in the list.
+2. Open its **Connection** tab.
+3. Under **Additional request headers**, click **Add a header** and enter the required name and value (for example, `x-company-charge-code` and your assigned code).
+4. Click **Save and test**. Removed rows are removed from the saved configuration too, and Rig tests the provider's models with the new headers.
+5. Try a short chat with the intended model.
 
-Saved headers apply to discovery listing, probes, and every model request through that connection, including streamed calls. They survive runtime restarts. Saving clears previous probe results, but does not change the stored API key or aliases and makes no provider requests. SDK headers cannot override these configured values. Keep primary credentials in the **Key** field: additional header values are non-secret metadata stored in the local database and visible in connection settings. Authentication and transport-header overrides are rejected.
+Saved headers apply to discovery listing, probes, and every model request through that connection, including streamed calls. They survive runtime restarts. Saving clears previous test results and tests the models again; it does not change the stored API key or aliases. SDK headers cannot override these configured values. Keep primary credentials in the **Key** field: additional header values are non-secret metadata stored in the local database and visible in connection settings. Authentication and transport-header overrides are rejected.
 
 A 400 validation response is classified as **entitled** because the gateway was reached; it does not prove the request can complete. Resolve missing headers and other validation errors in **Detail** before treating the model as ready.
 
 ### Scan the available model inventory
 
-Click **Scan inventory** on a saved connection to list models (where supported), add newly listed IDs, and probe both known and newly listed models. This uses the saved key and headers and may incur provider usage. Review each model's status and Detail; a listed ID alone does not prove permission, and validation-only entitlement does not prove a successful chat.
+Click **Scan inventory** on the provider's **Models** tab to list models (where supported), add newly listed IDs, and probe both known and newly listed models. This uses the saved key and headers and may incur provider usage. Review each model's status and Detail; a listed ID alone does not prove permission, and validation-only entitlement does not prove a successful chat.
 
-Direct-provider profiles may already define a listing endpoint. The generic APIM template does not: a key cannot reveal private deployment routes by itself. If your company exposes an OpenAI-compatible or Anthropic model-list endpoint, configure it under **Connection settings → Model discovery**:
+Direct-provider profiles may already define a listing endpoint. The generic APIM template does not: a key cannot reveal private deployment routes by itself. If your company exposes an OpenAI-compatible or Anthropic model-list endpoint, configure it on the provider's **Discovery** tab:
 
 - **Listing response format:** provider model list or Azure deployment inventory, matching the response your endpoint returns. Azure inventory currently uses OpenAI-compatible inference.
-- **Listing dialect:** the provider dialect used for discovered models.
-- **Model listing route:** the company-supplied GET path, relative to the saved base URL, including any required query parameters.
-- **Inference route for newly discovered models:** the company-supplied request path, optionally containing `{model}` where a listed ID is also the deployment ID. For example, `/deployments/{model}/chat/completions?api-version=COMPANY_VERSION` is a pattern, not an actual gateway configuration.
+- **Dialect of listed models:** the provider dialect used for discovered models.
+- **Listing route:** the company-supplied GET path, relative to the saved base URL, including any required query parameters.
+- **Route for models found by listing:** the company-supplied request path, optionally containing `{model}` where a listed ID is also the deployment ID. For example, `/deployments/{model}/chat/completions?api-version=COMPANY_VERSION` is a pattern, not an actual gateway configuration.
 
-Select the **Max tokens field for new models** required by your deployments (for example, `max_completion_tokens`). Include the documented inference API version in the inference route query; do not infer it from a model date. Click **Save discovery**, then **Scan inventory**. The notice shows progress and distinguishes returned IDs from newly added models; zero new models may mean the returned models are already saved. Discovery settings survive restarts. Existing model routes are retained, and **Use profile defaults** removes the connection's discovery override. Each listing configuration describes one dialect; for mixed gateways, configure other models manually or use separate connections for different listing endpoints.
+Select the **Max tokens field for new models** required by your deployments (for example, `max_completion_tokens`). Include the documented inference API version in the inference route query; do not infer it from a model date. Click **Save discovery**, then **Scan inventory**. The notice shows progress and distinguishes returned IDs from newly added models; zero new models may mean the returned models are already saved. Discovery settings survive restarts. Existing model routes are retained, and **Restore defaults** removes the provider's discovery override. Each listing configuration describes one dialect; for mixed gateways, configure other models manually or use separate connections for different listing endpoints.
 
-**Generic example (configuration only):** if an administrator supplies `https://gateway.example.com/api/deployments/access`, use `https://gateway.example.com` as the connection base URL and `/api/deployments/access` as **Model listing route**. Keep the subscription key and any required metadata headers on the connection. These are illustrative placeholders, not a configured or tested service.
+**Generic example (configuration only):** if an administrator supplies `https://gateway.example.com/api/deployments/access`, use `https://gateway.example.com` as the connection base URL and `/api/deployments/access` as **Listing route**. Keep the subscription key and any required metadata headers on the connection. These are illustrative placeholders, not a configured or tested service.
 
 Before scanning, confirm that the endpoint accepts GET and inspect its documented response format. Choose **Provider model list** for a provider-style list containing `data` entries with an `id`. Choose **Azure deployment inventory** for a deployment array, or a `value`/`data` array of deployment records. This format uses each deployment's `name`, not its Azure resource `id` or underlying model-family name. It imports OpenAI deployments explicitly marked chat-capable, excluding failed provisioning states. Unsupported shapes and paginated deployment responses with `nextLink` report an error; they are not silently imported as a partial inventory. Merely pointing the scanner at a URL does not convert its response format. In particular, verify whether the returned ID is the actual deployment ID needed in an inference route such as `/deployments/{model}/chat/completions?api-version=COMPANY_VERSION`. Use the API version specified for inference by your company; the listing endpoint alone does not determine it.
 

@@ -4,7 +4,19 @@ import { DEFAULT_CAPABILITIES, type Connection, type Dialect, type Model } from 
 import type { AppContext } from "../context";
 import { discoverListed, ensureDefaultAlias, entryToModel, probeConnection, probeModel, seedFromProfile } from "../catalog";
 import { newId } from "../ids";
-import { DiscoverySpec, ExtraHeaders } from "../connection-settings";
+import { AuthHeaderName, AuthPrefix, DiscoverySpec, ExtraHeaders } from "../connection-settings";
+
+/** Fix a connection in place: endpoint, how the key is sent, extra headers, and optionally the key. */
+const EditConnection = z
+  .object({
+    baseUrl: z.string().trim().url().refine((u) => /^https?:\/\//i.test(u), { message: "The base URL must start with http:// or https://" }),
+    headerName: AuthHeaderName,
+    headerPrefix: AuthPrefix,
+    extraHeaders: ExtraHeaders,
+    key: z.string().trim().min(1),
+  })
+  .partial()
+  .strict();
 
 const ManualModel = z.object({
   id: z.string().min(1),
@@ -94,6 +106,29 @@ export function catalogRoutes(app: AppContext): Hono {
     await app.secrets.delete(id);
     app.connections.delete(id);
     return c.json({ ok: true });
+  });
+
+  /**
+   * Edit a connection without re-adding it. The name stays fixed because agents refer to it.
+   * Any change clears earlier test results, which were for the old settings.
+   */
+  r.patch("/connections/:id", async (c) => {
+    const conn = app.connections.get(c.req.param("id"));
+    if (!conn) return c.json({ error: "not found" }, 404);
+    const parsed = EditConnection.safeParse(await c.req.json().catch(() => null));
+    if (!parsed.success) return c.json({ error: parsed.error.issues[0]?.message ?? "invalid body", issues: parsed.error.issues }, 400);
+    const b = parsed.data;
+    const baseUrl = b.baseUrl === undefined ? conn.baseUrl : b.baseUrl.replace(/\/+$/, "");
+    const auth = { headerName: b.headerName ?? conn.auth.headerName, prefix: b.headerPrefix === undefined ? conn.auth.prefix : b.headerPrefix || undefined };
+    const headers = b.extraHeaders ?? conn.extraHeaders ?? {};
+    if (Object.keys(headers).includes(auth.headerName.toLowerCase())) return c.json({ error: "An additional header uses the same name as the key header; the key belongs in the Key field." }, 400);
+    if (b.key !== undefined) {
+      await app.secrets.set(conn.id, b.key);
+      app.connections.setSecretLast4(conn.id, b.key.slice(-4));
+    }
+    if (baseUrl !== conn.baseUrl || auth.headerName !== conn.auth.headerName || auth.prefix !== conn.auth.prefix) app.connections.setEndpoint(conn.id, baseUrl, auth);
+    if (b.extraHeaders !== undefined) app.connections.setHeaders(conn.id, headers);
+    return c.json(app.connections.get(conn.id));
   });
 
   /** Replace the key, for a rotated or switched key. Models, aliases, and settings stay as they are. */
