@@ -1107,8 +1107,12 @@ pre.diff .del .sign {
   display: block;
   width: 112px;
   height: 112px;
-  margin: 0 auto var(--space-sm);
+  margin: 0 auto;
   object-fit: contain;
+}
+.welcome h1.welcome-title {
+  margin: 0 0 var(--space-sm);
+  line-height: 0;
 }
 .welcome h1 {
   font-size: var(--text-3xl);

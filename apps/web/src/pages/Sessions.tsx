@@ -525,8 +525,10 @@ function Welcome({ onNew, ready }: { onNew: (folder?: string) => void; ready?: b
   }, []);
   return (
     <div className="welcome">
-      <img className="welcome-logo" src={rigLogo} alt="" width="112" height="112" />
-      <h1>Rig</h1>
+      {/* The logo carries the name, so it is the heading; screen readers still hear "Rig". */}
+      <h1 className="welcome-title">
+        <img className="welcome-logo" src={rigLogo} alt="Rig" width="112" height="112" />
+      </h1>
       <p className="muted">Open a project folder to work on code with an agent, or start a chat.</p>
       {ready === false && (
         <div className="setup-callout">
