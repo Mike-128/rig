@@ -1105,8 +1105,8 @@ pre.diff .del .sign {
 }
 .welcome-logo {
   display: block;
-  width: 112px;
-  height: 112px;
+  width: 176px;
+  height: 176px;
   margin: 0 auto;
   object-fit: contain;
 }
