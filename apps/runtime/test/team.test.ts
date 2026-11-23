@@ -123,12 +123,16 @@ describe("a shared team repo", () => {
       json: { name: "Reviewer", slug: "reviewer", model: { alias: "default" }, instructions: "Review code.", tools: ["file_read", "load_skill"], skills: ["review-checklist"] },
     });
     const shared = await asAlice<{ staged: { kind: string; name: string }[] }>("/team/share", { method: "POST", json: { kind: "agent", name: "reviewer" } });
-    expect(shared.staged.map((s) => `${s.kind}:${s.name}`)).toEqual(["agent:reviewer", "skill:review-checklist"]);
+    // One change: the agent's folder, with the personal skill it relies on inside it.
+    expect(shared.staged.map((s) => `${s.kind}:${s.name}`)).toEqual(["agent:reviewer"]);
 
     const { pullRequest } = await asAlice<{ pullRequest: { number: number; branch: string; url: string } }>("/team/pull-request", { method: "POST", json: {} });
     expect(pullRequest.branch).toMatch(/^rig\/alice_acme\//);
-    expect(Object.keys(gh.files(pullRequest.branch)).sort()).toEqual(["README.md", "agents/reviewer.yaml", "rig-team.json", "skills/review-checklist/SKILL.md"]);
-    expect(Object.keys(gh.files())).not.toContain("agents/reviewer.yaml");
+    const proposed = gh.files(pullRequest.branch);
+    expect(Object.keys(proposed).sort()).toEqual(["README.md", "agents/reviewer/README.md", "agents/reviewer/agent.yaml", "agents/reviewer/skills/review-checklist/SKILL.md", "rig-team.json"]);
+    expect(proposed["agents/reviewer/README.md"]).toContain("# Reviewer");
+    expect(proposed["agents/reviewer/README.md"]).toContain("`review-checklist`");
+    expect(Object.keys(gh.files()).some((f) => f.startsWith("agents/"))).toBe(false);
     expect((await asAlice<TeamStatus>("/team")).pending).toEqual([]);
     expect(gh.pulls[0].body).toContain("@alice_acme");
 
@@ -167,8 +171,23 @@ describe("a shared team repo", () => {
     expect(res.staged.map((s) => s.name)).toEqual(["reviewer"]);
     const team = await asBob<TeamStatus>("/team");
     expect(team.pending).toHaveLength(1);
-    expect(Buffer.from(Object.values(team.pending[0].files)[0], "base64").toString()).toMatch(/version: 2/);
+    expect(Buffer.from(team.pending[0].files["agents/reviewer/agent.yaml"], "base64").toString()).toMatch(/version: 2/);
     await asBob(`/team/pending/${team.pending[0].id}`, { method: "DELETE" });
+  });
+
+  it("reads an agent in the earlier flat layout, and moves it into a folder when it is shared again", async () => {
+    gh.commit({ "agents/legacy.yaml": ["name: Legacy", "slug: legacy", "version: 1", "model:", "  alias: default", "instructions: Old layout.", ""].join("\n") });
+    await asAlice("/team/sync", { method: "POST" });
+    expect((await asAlice<AgentSummary[]>("/agents")).find((a) => a.slug === "legacy")).toMatchObject({ source: "team", version: 1 });
+
+    await asAlice("/team/agents/legacy", { method: "PUT", json: { name: "Legacy", model: { alias: "default" }, instructions: "New layout." } });
+    const { pullRequest } = await asAlice<{ pullRequest: { number: number; branch: string } }>("/team/pull-request", { method: "POST", json: {} });
+    const proposed = Object.keys(gh.files(pullRequest.branch));
+    expect(proposed).toContain("agents/legacy/agent.yaml");
+    expect(proposed).not.toContain("agents/legacy.yaml");
+    gh.merge(pullRequest.number);
+    await asAlice("/team/sync", { method: "POST" });
+    expect((await asAlice<AgentSummary[]>("/agents")).find((a) => a.slug === "legacy")).toMatchObject({ source: "team", version: 2 });
   });
 
   it("refuses to share an agent bound to one person's connection", async () => {

@@ -32,6 +32,7 @@ Grant the fewest tools that let the agent finish its job.
 | `knowledge_read`, `knowledge_search` | The user supplies local or mounted reference folders | Configure named `knowledge` sources; read-only, bounded text retrieval |
 | `memory_read`, `memory_write` | The agent needs separate notes across sessions | Enable `memory`; writes require sandbox 1 and approval |
 | `web_fetch` | The task depends on current information or a specific URL | Read-only, public http(s) only |
+| `document_create` | The agent hands the user a document: a report, letter, recipe, or table as Word (docx), a web page, Markdown, or CSV | Writes only new files under `outputs/`; never overwrites. Include it for any agent whose output is a document, and tell the agent to use it instead of asking the user to copy text into a file |
 | `file_write` | The agent produces or edits files | Needs sandbox 1; put in `approvals` |
 | `shell` | The agent runs builds, tests, or command-line tools | Needs sandbox 1; put in `approvals` |
 | `load_skill` | The agent has skills attached | Required whenever `skills` is non-empty |

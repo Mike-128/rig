@@ -114,6 +114,8 @@ export interface Model {
   params?: ModelParams;
   status: EntitlementStatus;
   statusMessage?: string;
+  /** HTTP status of the last test's answer, when the provider answered. */
+  statusCode?: number;
   lastProbedAt?: string;
   origin: "catalog" | "listed" | "manual";
 }

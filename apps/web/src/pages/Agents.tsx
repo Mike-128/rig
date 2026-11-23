@@ -2,11 +2,12 @@ import { useEffect, useState } from "react";
 import type { AgentSummary, Model, ModelAlias, SkillSummary } from "@rig/core/types";
 import { MANAGEMENT_TOOLS, slugify, type AgentDefinitionInput, type ValidationIssue } from "@rig/core/agent";
 import { api } from "../api";
+import { STATUS_LABEL, testResult } from "../setup";
 import type { McpServerStatus } from "./Mcp";
 
 type ModelRow = Model & { connectionName: string };
 
-const WORKSPACE_TOOLS = ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill", "knowledge_read", "knowledge_search", "memory_read", "memory_write"] as const;
+const WORKSPACE_TOOLS = ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "document_create", "todo_write", "task", "load_skill", "knowledge_read", "knowledge_search", "memory_read", "memory_write"] as const;
 
 const TOOL_HELP: Record<string, string> = {
   knowledge_read: "Browse and read only the configured knowledge folders.",
@@ -22,6 +23,7 @@ const TOOL_HELP: Record<string, string> = {
   task: "Delegate work to sub-agents with their own context, in parallel if needed.",
   "mcp__*": "Every tool from every connected MCP server. Tools that are not read-only ask for approval.",
   web_fetch: "Fetch a public http(s) URL as text. Read-only.",
+  document_create: "Create a Word document, web page, Markdown, or CSV file under outputs/ for the user to download. Never overwrites.",
   shell: "Run a command in the workspace directory. Needs sandbox 1; the widest capability here.",
   load_skill: "Read the full instructions for an attached skill. Added automatically when you attach one.",
   agent_list: "List the agents saved in this rig.",
@@ -64,7 +66,7 @@ const blank = (): Form => ({
   alias: "default",
   connection: "",
   model: "",
-  tools: ["web_fetch", "file_read"],
+  tools: ["web_fetch", "file_read", "document_create"],
   skills: [],
   knowledge: [],
   memory: false,
@@ -304,7 +306,11 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
   };
 
   const connections = [...new Map(models.map((m) => [m.connectionId, m.connectionName])).entries()];
-  const modelsForConn = models.filter((m) => m.connectionId === form.connection || m.connectionName === form.connection);
+  // Agents name their provider; older definitions may hold its id instead.
+  const chosenConn = connections.find(([id, name]) => id === form.connection || name === form.connection);
+  const connGone = Boolean(form.connection) && !chosenConn;
+  const modelsForConn = chosenConn ? models.filter((m) => m.connectionId === chosenConn[0]) : [];
+  const modelGone = Boolean(chosenConn && form.model) && !modelsForConn.some((m) => m.providerModelId === form.model);
 
   return (
     <div className="split">
@@ -444,17 +450,18 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
                 <span className="muted">
                   {aliases.find((a) => a.alias === form.alias)
                     ? `bound to ${aliases.find((a) => a.alias === form.alias)!.modelId}`
-                    : "not bound yet: set it in the Model Catalog"}
+                    : "not set yet: choose a model for it in Settings › Models"}
                 </span>
               </label>
             ) : (
               <div className="grid2">
                 <label className="field">
                   <span>Connection</span>
-                  <select value={form.connection} onChange={(e) => set("connection", e.target.value)}>
+                  <select value={chosenConn ? chosenConn[1] : form.connection} onChange={(e) => set("connection", e.target.value)}>
                     <option value="">choose…</option>
+                    {connGone && <option value={form.connection}>Removed provider</option>}
                     {connections.map(([id, name]) => (
-                      <option key={id} value={id}>
+                      <option key={id} value={name}>
                         {name}
                       </option>
                     ))}
@@ -464,13 +471,19 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
                   <span>Model</span>
                   <select value={form.model} onChange={(e) => set("model", e.target.value)}>
                     <option value="">choose…</option>
+                    {modelGone && <option value={form.model}>{form.model} (removed)</option>}
                     {modelsForConn.map((m) => (
                       <option key={m.id} value={m.providerModelId}>
-                        {m.displayName} ({m.status})
+                        {m.displayName} ({STATUS_LABEL[testResult(m)] ?? m.status})
                       </option>
                     ))}
                   </select>
                 </label>
+                {(connGone || modelGone) && (
+                  <p className="issue warning span-all">
+                    This agent's {connGone ? "provider" : "model"} was removed, so it runs on your default model for now. Choose a provider and model, or bind it to an alias, and save.
+                  </p>
+                )}
               </div>
             )}
             <div className="grid2">

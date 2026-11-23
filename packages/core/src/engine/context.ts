@@ -1,4 +1,4 @@
-import type { Message, RunEvent } from "../types";
+import type { Block, Message, RunEvent } from "../types";
 
 /** The user message a compaction summary becomes when the conversation is rebuilt. */
 export function summaryMessage(summary: string): Message {
@@ -41,6 +41,30 @@ export function pushMessage(messages: Message[], m: Message): void {
   } else {
     messages.push(m);
   }
+}
+
+const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}… (${s.length - n} more characters)` : s);
+
+/**
+ * The conversation as plain text turns, for a request that must not call tools (compaction).
+ * Tool calls and results become text, so the request needs no tool definitions or tool_choice,
+ * which some gateways reject. Reasoning is dropped; images are kept.
+ */
+export function asPlainTranscript(messages: Message[]): Message[] {
+  const out: Message[] = [];
+  for (const m of messages) {
+    const content: Block[] = [];
+    for (const b of m.content) {
+      if (b.type === "text" || b.type === "image") content.push(b);
+      else if (b.type === "tool_use") content.push({ type: "text", text: `[Called ${b.name} with ${clip(JSON.stringify(b.input ?? {}), 2000)}]` });
+      else if (b.type === "tool_result") content.push({ type: "text", text: `[${b.isError ? "Error from" : "Result of"} that call: ${clip(b.content, 4000)}]` });
+    }
+    if (!content.length) continue;
+    const last = out[out.length - 1];
+    if (last && last.role === m.role) last.content = [...last.content, ...content];
+    else out.push({ role: m.role, content });
+  }
+  return out;
 }
 
 /** Rough token count (4 characters per token), for deciding when to compact before a request is sent. */

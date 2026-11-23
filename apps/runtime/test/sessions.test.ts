@@ -169,6 +169,66 @@ describe("sessions", () => {
     expect(detail.events.some((e) => e.type === "compacted")).toBe(true);
     expect(detail.messages).toHaveLength(1);
   });
+
+  it("compacts without tool definitions or tool_choice, which some gateways reject", async () => {
+    const session = await api<Session>("/sessions", { method: "POST", json: { agent: "assistant" } });
+    await waitForRun((await api<{ id: string }>(`/sessions/${session.id}/runs`, { method: "POST", json: { input: "read the file" } })).id);
+    expect((await events(session.id)).some((e) => e.type === "tool_call")).toBe(true);
+    const run = await api<{ id: string }>(`/sessions/${session.id}/compact`, { method: "POST" });
+    expect((await waitForRun(run.id)).status).toBe("completed");
+    const body = upstream.requests.filter((r) => r.path === "/v1/messages").at(-1)!.body as Record<string, unknown>;
+    expect(body).not.toHaveProperty("tools");
+    expect(body).not.toHaveProperty("tool_choice");
+    expect(JSON.stringify(body.messages)).toContain("[Called file_read with");
+  });
+});
+
+describe("agents whose model is gone", () => {
+  it("runs an agent pinned to a removed provider on the default model, and says so", async () => {
+    await api("/agents/pinned-gone", {
+      method: "PUT",
+      json: { name: "Pinned Gone", slug: "pinned-gone", model: { connection: "conn_removed", model: "old-model" }, instructions: "x" },
+    });
+    const session = await api<Session>("/sessions", { method: "POST", json: { agent: "pinned-gone" } });
+    const run = await api<{ id: string; status: string }>(`/sessions/${session.id}/runs`, { method: "POST", json: { input: "hello" } });
+    expect((await waitForRun(run.id)).status).toBe("completed");
+    const warning = (await events(session.id)).find((e) => e.type === "warning") as Extract<RunEvent, { type: "warning" }>;
+    expect(warning.message).toMatch(/Pinned Gone is set to a provider that was removed \(conn_removed\), so this run uses your default model/);
+  });
+
+  it("reports a run that cannot start as failed, so the page does not show it working", async () => {
+    await api("/agents/no-alias", { method: "PUT", json: { name: "No Alias", slug: "no-alias", model: { alias: "unset-alias" }, instructions: "x" } });
+    const session = await api<Session>("/sessions", { method: "POST", json: { agent: "no-alias" } });
+    const run = await api<{ id: string; status: string }>(`/sessions/${session.id}/runs`, { method: "POST", json: { input: "hello" } });
+    expect(run.status).toBe("failed");
+    const failed = (await events(session.id)).find((e) => e.type === "run_failed") as Extract<RunEvent, { type: "run_failed" }>;
+    expect(failed.error.message).toMatch(/uses the alias "unset-alias", which is not set/);
+  });
+});
+
+describe("documents", () => {
+  it("creates a Word document in the chat and serves it as a download", async () => {
+    const session = await api<Session>("/sessions", { method: "POST", json: { agent: "assistant" } });
+    await waitForRun((await api<{ id: string }>(`/sessions/${session.id}/runs`, { method: "POST", json: { input: "Generate this into a word doc" } })).id);
+    const result = (await events(session.id)).find((e) => e.type === "tool_result") as Extract<RunEvent, { type: "tool_result" }>;
+    expect(result).toMatchObject({ name: "document_create", isError: false });
+    expect(result.output).toMatch(/^Created outputs\/Chicken Parmesan\.docx \(\d+ (bytes|KB)\)\./);
+
+    const res = await fetch(`http://127.0.0.1:${rt.port}/api/sessions/${session.id}/outputs/${encodeURIComponent("Chicken Parmesan.docx")}`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    expect(res.headers.get("content-disposition")).toContain("attachment;");
+    expect(res.headers.get("content-disposition")).toContain("filename*=UTF-8''Chicken%20Parmesan.docx");
+    expect(Buffer.from(await res.arrayBuffer()).subarray(0, 2).toString()).toBe("PK");
+  });
+
+  it("serves only files directly in outputs/", async () => {
+    const session = await api<Session>("/sessions", { method: "POST", json: { agent: "assistant" } });
+    const get = (name: string) => fetch(`http://127.0.0.1:${rt.port}/api/sessions/${session.id}/outputs/${name}`);
+    expect((await get(encodeURIComponent("..\\secret.txt"))).status).toBe(400);
+    expect((await get(encodeURIComponent("../secret.txt"))).status).toBe(400);
+    expect((await get("missing.docx")).status).toBe(404);
+  });
 });
 
 describe("skills from GitHub", () => {

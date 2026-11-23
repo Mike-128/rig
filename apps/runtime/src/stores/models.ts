@@ -15,6 +15,7 @@ interface Row {
   params: string | null;
   status: string;
   status_message: string | null;
+  status_code?: number | null;
   last_probed_at: string | null;
   origin: string;
 }
@@ -34,6 +35,7 @@ function toModel(r: Row): Model {
     params: json<ModelParams | undefined>(r.params, undefined),
     status: r.status as EntitlementStatus,
     statusMessage: r.status_message ?? undefined,
+    statusCode: r.status_code ?? undefined,
     lastProbedAt: r.last_probed_at ?? undefined,
     origin: r.origin as Model["origin"],
   };
@@ -73,11 +75,11 @@ export class ModelStore {
   upsert(m: Model): Model {
     this.db
       .prepare(
-        `INSERT INTO models (id, connection_id, provider_model_id, body_model, display_name, dialect, route, query, capabilities, pricing, params, status, status_message, last_probed_at, origin)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `INSERT INTO models (id, connection_id, provider_model_id, body_model, display_name, dialect, route, query, capabilities, pricing, params, status, status_message, status_code, last_probed_at, origin)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
          ON CONFLICT(id) DO UPDATE SET body_model=excluded.body_model, display_name=excluded.display_name, dialect=excluded.dialect, route=excluded.route,
            query=excluded.query, capabilities=excluded.capabilities, pricing=excluded.pricing, params=excluded.params, status=excluded.status,
-           status_message=excluded.status_message, last_probed_at=excluded.last_probed_at, origin=excluded.origin`,
+           status_message=excluded.status_message, status_code=excluded.status_code, last_probed_at=excluded.last_probed_at, origin=excluded.origin`,
       )
       .run(
         m.id,
@@ -93,14 +95,15 @@ export class ModelStore {
         m.params ? JSON.stringify(m.params) : null,
         m.status,
         m.statusMessage ?? null,
+        m.statusCode ?? null,
         m.lastProbedAt ?? null,
         m.origin,
       );
     return m;
   }
 
-  setStatus(id: string, status: EntitlementStatus, message: string | undefined, at: string): void {
-    this.db.prepare("UPDATE models SET status = ?, status_message = ?, last_probed_at = ? WHERE id = ?").run(status, message ?? null, at, id);
+  setStatus(id: string, status: EntitlementStatus, message: string | undefined, at: string, code?: number): void {
+    this.db.prepare("UPDATE models SET status = ?, status_message = ?, status_code = ?, last_probed_at = ? WHERE id = ?").run(status, message ?? null, code ?? null, at, id);
   }
 
   delete(id: string): void {

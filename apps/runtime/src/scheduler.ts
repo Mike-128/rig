@@ -48,6 +48,8 @@ interface QueuedRun {
 export interface ResolvedModel {
   connection: Connection;
   model: Model;
+  /** Set when the agent's own model is gone and the run falls back to the default alias. */
+  notice?: string;
 }
 
 export type BusKey = `session:${string}` | `run:${string}` | "all";
@@ -79,22 +81,34 @@ export class RunManager {
   /** Extra tools (MCP) the runtime offers on top of the builtins. Replaced when servers connect. */
   extraTools: () => ToolSpec[] = () => [];
 
-  /** Resolve an agent's model binding to a concrete connection and model. */
+  /** The model an alias is bound to, when the binding and its target still exist. */
+  private aliasTarget(alias: string): ResolvedModel | undefined {
+    const { models, connections } = this.app;
+    const a = models.getAlias(alias);
+    const conn = a && connections.get(a.connectionId);
+    const model = conn && models.find(conn.id, a.modelId);
+    return conn && model ? { connection: conn, model } : undefined;
+  }
+
+  /**
+   * Resolve an agent's model binding to a concrete connection and model. An agent pinned to a
+   * provider or model that was since removed runs on the default model, with a notice saying so.
+   */
   resolveModel(agent: AgentDefinition): ResolvedModel {
     const { models, connections } = this.app;
     if ("alias" in agent.model) {
-      const a = models.getAlias(agent.model.alias);
-      if (!a) throw new Error(`Alias "${agent.model.alias}" is not set. Bind it in the Model Catalog.`);
-      const conn = connections.get(a.connectionId);
-      const model = conn && models.find(conn.id, a.modelId);
-      if (!conn || !model) throw new Error(`Alias "${agent.model.alias}" points at a missing connection or model`);
-      return { connection: conn, model };
+      const target = this.aliasTarget(agent.model.alias);
+      if (target) return target;
+      if (!models.getAlias(agent.model.alias)) throw new Error(`${agent.name} uses the alias "${agent.model.alias}", which is not set. Choose a model for it in Settings › Models.`);
+      throw new Error(`The alias "${agent.model.alias}" points at a provider or model that was removed. Choose another model for it in Settings › Models.`);
     }
     const conn = connections.get(agent.model.connection) ?? connections.getByName(agent.model.connection);
-    if (!conn) throw new Error(`Connection "${agent.model.connection}" not found`);
-    const model = models.find(conn.id, agent.model.model);
-    if (!model) throw new Error(`Model "${agent.model.model}" not found on connection "${conn.name}"`);
-    return { connection: conn, model };
+    const model = conn && models.find(conn.id, agent.model.model);
+    if (conn && model) return { connection: conn, model };
+    const missing = conn ? `the model "${agent.model.model}" on ${conn.name}, which was removed` : `a provider that was removed (${agent.model.connection})`;
+    const fallback = this.aliasTarget("default");
+    if (!fallback) throw new Error(`${agent.name} is set to ${missing}, and no default model is set. Choose a model for ${agent.name} on the Agents page.`);
+    return { ...fallback, notice: `${agent.name} is set to ${missing}, so this run uses your default model, ${fallback.model.displayName}. Choose a model for ${agent.name} on the Agents page to keep it.` };
   }
 
   submit(session: Session, input: string, opts: { compactOnly?: boolean; display?: string } = {}): Run {
@@ -167,7 +181,7 @@ export class RunManager {
       const current = sessions.getSession(session.id) ?? session;
       const agent = agents.getVersion(current.agentSlug, current.agentVersion) ?? agents.get(current.agentSlug);
       if (!agent) throw new Error(`Agent "${current.agentSlug}" not found`);
-      const { connection, model } = this.resolveModel(agent);
+      const { connection, model, notice } = this.resolveModel(agent);
       if (model.status !== "entitled" && model.status !== "unprobed" && model.status !== "listed" && model.status !== "rate_limited") {
         this.emit(run, { type: "warning", message: `Model ${model.providerModelId} last probed as ${model.status}; trying anyway` });
       }
@@ -180,6 +194,7 @@ export class RunManager {
         agent: { slug: agent.slug, version: agent.version },
         model: { connectionId: connection.id, modelId: model.providerModelId, dialect: model.dialect, contextWindow: model.capabilities.maxContextTokens },
       });
+      if (notice) this.emit(run, { type: "warning", message: notice });
 
       const gen = runNativeEngine({
         agent,
@@ -232,6 +247,7 @@ export class RunManager {
       else sessions.touchSession(session.id);
     } catch (e) {
       const message = (e as Error).message;
+      run.status = "failed";
       this.emit(run, { type: "run_failed", error: { kind: "unknown", message, retryable: false }, usage: { inputTokens: 0, outputTokens: 0 }, costUsd: 0 });
       sessions.updateRun(run.id, { status: "failed", endedAt: nowIso(), error: message });
     } finally {

@@ -49,11 +49,12 @@ export class AgentStore {
       .run(def.slug, def.name, def.description ?? null, def.version, nowIso());
   }
 
+  /** An agent's file in the team repo: agents/<slug>/agent.yaml, else the earlier agents/<slug>.yaml. */
   private teamFile(slug: string): string | undefined {
     const d = this.teamDir();
     if (!d) return undefined;
-    const p = path.join(d, "agents", `${slug}.yaml`);
-    return existsSync(p) ? p : undefined;
+    for (const p of [path.join(d, "agents", slug, "agent.yaml"), path.join(d, "agents", `${slug}.yaml`)]) if (existsSync(p)) return p;
+    return undefined;
   }
 
   /** Team agents that parse and validate; a broken file in the repo is skipped, not fatal. */
@@ -61,12 +62,18 @@ export class AgentStore {
     const d = this.teamDir();
     const dir = d && path.join(d, "agents");
     if (!dir || !existsSync(dir)) return [];
+    const slugs = new Set<string>();
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) slugs.add(e.name);
+      else if (e.name.endsWith(".yaml")) slugs.add(e.name.slice(0, -5));
+    }
     const out: AgentDefinition[] = [];
-    for (const f of readdirSync(dir)) {
-      if (!f.endsWith(".yaml")) continue;
+    for (const slug of [...slugs].sort()) {
+      const file = this.teamFile(slug);
+      if (!file) continue;
       try {
-        const v = validateAgentDefinition(agentFromYaml(readFileSync(path.join(dir, f), "utf8")));
-        if (v.definition && v.definition.slug === f.slice(0, -5)) out.push(v.definition);
+        const v = validateAgentDefinition(agentFromYaml(readFileSync(file, "utf8")));
+        if (v.definition && v.definition.slug === slug) out.push(v.definition);
       } catch {
         /* skip */
       }

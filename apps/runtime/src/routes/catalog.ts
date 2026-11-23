@@ -219,6 +219,7 @@ export function catalogRoutes(app: AppContext): Hono {
       // A previous entitlement result says nothing about the edited endpoint.
       status: "unprobed" as const,
       statusMessage: undefined,
+      statusCode: undefined,
       lastProbedAt: undefined,
     };
     app.models.upsert(updated);

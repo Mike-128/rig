@@ -14,7 +14,17 @@ import { GitHubError, type GitHubAuth, type GitHubClient } from "./github";
  * The repo holds definitions, not deliverables. Only these paths are read or written, with size
  * limits, and agents have no tool that writes anything else into it.
  */
-export const TEAM_PATHS = /^(rig-team\.json|README\.md|agents\/[a-z0-9][a-z0-9-]{0,63}\.yaml|memory\/[a-z0-9][a-z0-9-]{0,63}\.md|skills\/[a-z0-9][a-z0-9-]{0,63}\/[^\0]+)$/;
+const NAME = "[a-z0-9][a-z0-9-]{0,63}";
+/**
+ * Each agent has its own folder: agents/<slug>/agent.yaml, a README, and the skills it brings.
+ * agents/<slug>.yaml is the earlier flat layout, still read; sharing the agent again moves it.
+ */
+export const TEAM_PATHS = new RegExp(
+  `^(rig-team\\.json|README\\.md|agents/${NAME}\\.yaml|agents/${NAME}/(agent\\.yaml|README\\.md|skills/${NAME}/[^\\0]+)|memory/${NAME}\\.md|skills/${NAME}/[^\\0]+)$`,
+);
+
+/** Repo paths of one agent's folder, and of its file in the earlier flat layout. */
+export const agentPaths = (slug: string) => ({ dir: `agents/${slug}/`, definition: `agents/${slug}/agent.yaml`, readme: `agents/${slug}/README.md`, flat: `agents/${slug}.yaml` });
 const MAX_FILE_BYTES = 1_000_000;
 const MAX_SKILL_BYTES = 5_000_000;
 const MAX_SKILL_FILES = 100;
@@ -241,7 +251,7 @@ export class TeamManager {
     const put = (file: string, text: string) =>
       gh.request("PUT", this.repoPath(c, `/contents/${file}`), { message: `Set up ${file} for Rig`, content: Buffer.from(text).toString("base64"), branch: c.branch });
     try {
-      await put("rig-team.json", `${JSON.stringify({ rig: 1, layout: { agents: "agents/<slug>.yaml", skills: "skills/<name>/SKILL.md", memory: "memory/<name>.md" } }, null, 2)}\n`);
+      await put("rig-team.json", `${JSON.stringify({ rig: 1, layout: { agents: "agents/<slug>/agent.yaml", skills: "skills/<name>/SKILL.md", memory: "memory/<name>.md" } }, null, 2)}\n`);
     } catch (e) {
       if (e instanceof GitHubError && e.status === 422) {
         throw new Error("The repository already has content. Ask a teammate who set it up, or add rig-team.json through a pull request.");
@@ -274,8 +284,11 @@ export class TeamManager {
     return next.length !== all.length;
   }
 
-  /** The files a skill folder would contribute, read from disk with the repo's limits applied. */
-  static skillFiles(name: string, dir: string): Record<string, string> {
+  /**
+   * The files a skill folder would contribute, read from disk with the repo's limits applied.
+   * They go under skills/<name>/, or under the folder of the agent that brings the skill.
+   */
+  static skillFiles(name: string, dir: string, root = `skills/${name}`): Record<string, string> {
     const files: Record<string, string> = {};
     let total = 0;
     const walk = (d: string, rel: string) => {
@@ -289,13 +302,13 @@ export class TeamManager {
           total += size;
           if (size > MAX_FILE_BYTES) throw new Error(`${r} is over 1 MB; keep large files out of shared skills.`);
           if (Object.keys(files).length >= MAX_SKILL_FILES) throw new Error(`skill "${name}" has more than ${MAX_SKILL_FILES} files`);
-          files[`skills/${name}/${r}`] = readFileSync(abs).toString("base64");
+          files[`${root}/${r}`] = readFileSync(abs).toString("base64");
         }
       }
     };
     walk(dir, "");
     if (total > MAX_SKILL_BYTES) throw new Error(`skill "${name}" is over 5 MB in total`);
-    if (!files[`skills/${name}/SKILL.md`]) throw new Error(`skill "${name}" has no SKILL.md`);
+    if (!files[`${root}/SKILL.md`]) throw new Error(`skill "${name}" has no SKILL.md`);
     return files;
   }
 
@@ -316,8 +329,14 @@ export class TeamManager {
 
     const entries: Json[] = [];
     for (const ch of queued) {
-      const prefix = ch.kind === "skill" ? `skills/${ch.name}/` : undefined;
-      const owned = prefix ? Object.keys(known).filter((p) => p.startsWith(prefix)) : ch.kind === "agent" ? [`agents/${ch.name}.yaml`] : [`memory/${ch.name}.md`];
+      // What a change owns on the repo: an agent's whole folder plus its old flat file, a skill's folder.
+      const a = agentPaths(ch.name);
+      const owned =
+        ch.kind === "skill"
+          ? Object.keys(known).filter((p) => p.startsWith(`skills/${ch.name}/`))
+          : ch.kind === "agent"
+            ? [...Object.keys(known).filter((p) => p.startsWith(a.dir)), a.flat]
+            : [`memory/${ch.name}.md`];
       if (ch.op === "delete") {
         for (const p of owned) if (known[p]) entries.push({ path: p, mode: "100644", type: "blob", sha: null });
         continue;
@@ -326,7 +345,7 @@ export class TeamManager {
         const blob = await gh.request("POST", this.repoPath(c, "/git/blobs"), { content: b64, encoding: "base64" });
         entries.push({ path: p, mode: "100644", type: "blob", sha: blob.sha });
       }
-      // A skill's files that the new version no longer has are removed with it.
+      // Files the new version no longer has are removed with it, including an agent's old flat file.
       for (const p of owned) if (known[p] && !ch.files[p]) entries.push({ path: p, mode: "100644", type: "blob", sha: null });
     }
     if (!entries.length) throw new Error("These changes are already on the team repo.");
@@ -424,8 +443,8 @@ branch and proposes every change as a pull request, so reviews decide what the t
 
 | Folder | Holds |
 |---|---|
-| \`agents/<slug>.yaml\` | Agent definitions. They bind to model aliases such as \`default\`, which each person maps to a model on their own machine. |
-| \`skills/<name>/SKILL.md\` | Skills, with any scripts or reference files they need. |
+| \`agents/<slug>/\` | One folder per agent: \`agent.yaml\` (the definition), a \`README.md\` describing it, and \`skills/\` with the skills it brings. Agents bind to model aliases such as \`default\`, which each person maps to a model on their own machine. |
+| \`skills/<name>/SKILL.md\` | Skills shared on their own, with any scripts or reference files they need. |
 | \`memory/<name>.md\` | Team memory: one short fact, decision, convention, or gotcha per file. |
 
 This is not a place for deliverables or data: Rig only reads and writes the paths above, with size

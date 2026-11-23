@@ -347,6 +347,7 @@ label.field > span {
   border-color: color-mix(in oklab, var(--color-bad) 35%, var(--color-rule));
 }
 .badge.rate_limited,
+.badge.rejected,
 .badge.unknown {
   color: var(--color-accent);
   background: var(--color-accent-soft);
@@ -1815,8 +1816,22 @@ label.field.filter {
 .danger-zone .hint {
   margin: var(--space-3xs) 0 var(--space-md);
 }
+/* With the Settings sidebar beside it, the provider panel is too narrow for the model table below this width. */
+@media (max-width: 1080px) {
+  .providers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .provider-list {
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  button.provider-item,
+  button.provider-add {
+    width: auto;
+  }
+}
 @media (max-width: 860px) {
-  .providers,
   .default-bar {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1862,4 +1877,36 @@ button.clamp-toggle {
   margin-top: var(--space-3xs);
   margin-left: calc(-1 * var(--space-xs));
   color: var(--color-ink-2);
+}
+
+.status-code {
+  margin-left: var(--space-2xs);
+  color: var(--color-ink-2);
+}
+.grid2 > .span-all {
+  grid-column: 1 / -1;
+}
+
+/* a document the agent created: the file, and the way to get it */
+.document-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  max-width: 560px;
+  padding: var(--space-sm) var(--space-md);
+  border: var(--rule-hair) solid var(--color-rule-2);
+  border-left: 2px solid var(--color-accent);
+  border-radius: var(--radius-pill);
+  background: var(--color-paper-2);
+}
+.document-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.document-name {
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
 }

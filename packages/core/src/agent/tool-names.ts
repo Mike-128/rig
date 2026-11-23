@@ -9,6 +9,7 @@ export const AGENT_TOOL_NAMES = [
   "grep",
   "shell",
   "web_fetch",
+  "document_create",
   "todo_write",
   "task",
   "load_skill",
@@ -47,4 +48,4 @@ export const EDIT_TOOLS: readonly BuiltinToolName[] = ["file_write", "file_edit"
 export const MANAGEMENT_TOOLS: readonly BuiltinToolName[] = ["agent_list", "agent_read", "agent_write", "model_list", "skill_list", "skill_write"];
 
 /** The tool set of a coding agent, in the order they are offered. */
-export const CODING_TOOLS: readonly BuiltinToolName[] = ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill", "memory_read", "memory_write"];
+export const CODING_TOOLS: readonly BuiltinToolName[] = ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "document_create", "todo_write", "task", "load_skill", "memory_read", "memory_write"];

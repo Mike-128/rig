@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.80.0",
+    "docx": "9.7.1",
+    "marked": "15.0.12",
     "openai": "^6.0.0",
     "yaml": "^2.6.0",
     "zod": "^4.0.0"

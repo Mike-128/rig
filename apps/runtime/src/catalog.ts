@@ -83,7 +83,7 @@ export async function probeModel(app: AppContext, conn: Connection, model: Model
   const r = await adapter.probe(adapterConnection(app, conn, model), model);
   const at = nowIso();
   const msg = r.message ? `${briefMessage(r.message)} (${r.latencyMs} ms)` : `${r.latencyMs} ms`;
-  app.models.setStatus(model.id, r.status, msg, at);
+  app.models.setStatus(model.id, r.status, msg, at, r.httpStatus);
   return app.models.get(model.id)!;
 }
 

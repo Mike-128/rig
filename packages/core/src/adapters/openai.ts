@@ -3,7 +3,7 @@ import type { Block, CanonicalRequest, RigError, Message, Model, StopReason, Str
 import type { AdapterConnection, ProviderAdapter } from "./types";
 import { cancelledError, errorFromStatus, isAbortError, networkError } from "./errors";
 import type { ProbeResult } from "../gateway/probe";
-import { classifyProbeError } from "../gateway/probe";
+import { classifyProbeError, probeShapeProblem } from "../gateway/probe";
 import { parseToolArguments } from "./tool-args";
 
 function makeClient(conn: AdapterConnection): OpenAI {
@@ -174,11 +174,14 @@ export const openaiAdapter: ProviderAdapter = {
         messages: [{ role: "user", content: "hi" }],
       };
       (params as unknown as Record<string, unknown>)[maxField] = 5;
-      await client.chat.completions.create(params, { signal });
-      return { status: "entitled", latencyMs: Date.now() - t0 };
+      const { data, response } = await client.chat.completions.create(params, { signal }).withResponse();
+      const latencyMs = Date.now() - t0;
+      const problem = probeShapeProblem("openai.chat", data);
+      if (problem) return { status: "unknown", message: problem, httpStatus: response.status, latencyMs };
+      return { status: "entitled", httpStatus: response.status, latencyMs };
     } catch (err) {
       const e = openaiAdapter.normalizeError(err);
-      return { status: classifyProbeError(e), message: e.message, latencyMs: Date.now() - t0 };
+      return { status: classifyProbeError(e), message: e.message, httpStatus: e.status, latencyMs: Date.now() - t0 };
     }
   },
 

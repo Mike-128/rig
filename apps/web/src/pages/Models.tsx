@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { Connection, GatewayProfile, Model, ModelAlias } from "@rig/core/types";
 import { api } from "../api";
-import { announceSetupChange, STATUS_HELP, STATUS_LABEL, useSetup } from "../setup";
+import { announceSetupChange, STATUS_HELP, STATUS_LABEL, testResult, useSetup } from "../setup";
 import { DiscoverySettings, HeaderFields, headerRecord, headerRows, type HeaderRow } from "../ConnectionSettings";
 
 type ModelRow = Model & { connectionName: string };
@@ -57,12 +57,14 @@ function formFor(m: Model): ManualForm {
 /** One sentence per probe, turning the per-model results into what to do next. */
 function findings(rows: Model[], listError?: string, found?: number): string[] {
   const tested = rows.filter((m) => !untested(m));
-  const count = (s: string) => tested.filter((m) => m.status === s).length;
+  const count = (s: string) => tested.filter((m) => testResult(m) === s).length;
   const out: string[] = [];
+  const ok = count("entitled");
+  const codes = (s: string) => [...new Set(tested.filter((m) => testResult(m) === s && m.statusCode).map((m) => `HTTP ${m.statusCode}`))].join(" and ");
   if (!tested.length) out.push("Nothing was tested. Add a model, or check Discovery.");
-  else if (count("entitled") === tested.length) out.push(tested.length === 1 ? "The tested model is reachable with this key." : `All ${tested.length} tested models are reachable with this key.`);
-  else if (count("entitled")) out.push(`${count("entitled")} of ${tested.length} tested models are reachable with this key.`);
-  if (count("entitled")) out.push("Reachable includes a request the provider rejected only for validation, so send a chat before relying on a model.");
+  else if (ok === tested.length) out.push(`${tested.length === 1 ? "The tested model" : `All ${tested.length} tested models`} answered successfully${codes("entitled") ? ` (${codes("entitled")})` : ""}.`);
+  else if (ok) out.push(`${ok} of ${tested.length} tested models answered successfully.`);
+  if (count("rejected")) out.push(`${count("rejected")} answered ${codes("rejected") || "with an error"}: the provider was reached but rejected the test request. A gateway that needs an extra header, such as a charge code, or a different request body answers this way. Read the message under Last test.`);
   if (tested.length && count("unauthorized") === tested.length) out.push("The provider rejected the key for every model. Check the key and the header it is sent in, under Connection.");
   else if (count("unauthorized")) out.push(`${count("unauthorized")} rejected the key.`);
   if (count("forbidden")) out.push(`${count("forbidden")} answered "not allowed": the key works but has no access to ${count("forbidden") === 1 ? "that model" : "those models"}.`);
@@ -77,10 +79,11 @@ function findings(rows: Model[], listError?: string, found?: number): string[] {
 /** A provider's standing in the list, from its models' last results. */
 function standing(rows: Model[]): { label: string; status: string } {
   const tested = rows.filter((m) => !untested(m));
-  const ok = tested.filter((m) => m.status === "entitled").length;
+  const ok = tested.filter((m) => testResult(m) === "entitled").length;
   if (!rows.length) return { label: "No models", status: "unprobed" };
   if (!tested.length) return { label: "Not tested", status: "unprobed" };
   if (tested.every((m) => m.status === "unauthorized")) return { label: "Key rejected", status: "unauthorized" };
+  if (!ok && tested.some((m) => testResult(m) === "rejected")) return { label: "Request rejected", status: "rejected" };
   if (!ok) return { label: "Nothing reachable", status: "not_found" };
   return { label: `${ok} reachable`, status: ok === tested.length ? "entitled" : "rate_limited" };
 }
@@ -336,7 +339,7 @@ function DefaultModel({
                 .filter((m) => m.connectionId === c.id && (!BROKEN.has(m.status) || isDefault(m)))
                 .map((m) => (
                   <option key={m.id} value={`${m.connectionId}\n${m.providerModelId}`}>
-                    {m.displayName} ({STATUS_LABEL[m.status] ?? m.status})
+                    {m.displayName} ({STATUS_LABEL[testResult(m)] ?? m.status})
                   </option>
                 ))}
             </optgroup>
@@ -346,6 +349,8 @@ function DefaultModel({
       <div className="default-notes">
         {bound && BROKEN.has(bound.status) ? (
           <p className="issue error">The default model failed its last test. Pick another, or fix its provider below.</p>
+        ) : bound && testResult(bound) === "rejected" ? (
+          <p className="issue warning">The provider rejected the default model's test request (HTTP {bound.statusCode}). A required header may be missing. Read the message on its row below.</p>
         ) : !anyUsable ? (
           <p className="issue warning">No model has passed a test yet. Test a provider's models below.</p>
         ) : (
@@ -584,9 +589,10 @@ function ModelsTab({
                   <div className="muted small">{m.dialect === "anthropic.messages" ? "Anthropic Messages" : "OpenAI Chat Completions"}</div>
                 </td>
                 <td>
-                  <span className={`badge ${m.status}`} title={STATUS_HELP[m.status]}>
-                    {STATUS_LABEL[m.status] ?? m.status}
+                  <span className={`badge ${testResult(m)}`} title={STATUS_HELP[testResult(m)]}>
+                    {STATUS_LABEL[testResult(m)] ?? m.status}
                   </span>
+                  {m.statusCode !== undefined && <span className="mono status-code">HTTP {m.statusCode}</span>}
                   {m.statusMessage && (
                     <ClampedText className="result-detail" text={m.statusMessage} lines={2} />
                   )}

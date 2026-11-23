@@ -101,6 +101,7 @@ function migrate(db: Db): void {
   const has = (table: string, column: string) =>
     (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some((c) => c.name === column);
   if (!has("sessions", "mode")) db.exec("ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'default'");
+  if (!has("models", "status_code")) db.exec("ALTER TABLE models ADD COLUMN status_code INTEGER");
   if (!has("sessions", "allow_rules")) db.exec("ALTER TABLE sessions ADD COLUMN allow_rules TEXT NOT NULL DEFAULT '[]'");
   // Project sessions were stored under an earlier kind name.
   db.exec("UPDATE sessions SET kind = 'project' WHERE kind NOT IN ('chat', 'project', 'task')");

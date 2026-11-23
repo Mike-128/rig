@@ -18,7 +18,7 @@ import {
   type ToolUseBlock,
   type Usage,
 } from "../types";
-import { estimateTokens, pushMessage, summaryMessage } from "./context";
+import { asPlainTranscript, estimateTokens, pushMessage, summaryMessage } from "./context";
 import { estimateCost } from "./cost";
 import { allowRuleFor, type PermissionMode, type PolicyEvaluator } from "./policy";
 import { buildSystemPrompt, type PromptContext } from "./prompt";
@@ -103,15 +103,13 @@ export async function* runNativeEngine(input: EngineInput): AsyncGenerator<RunEv
   /** Summarize everything so far and restart the conversation from the summary. */
   async function* compact(): AsyncGenerator<RunEventBody, boolean> {
     const tokensBefore = Math.max(lastInputTokens, estimateTokens(messages, system));
-    const convo = [...messages];
+    // Tool history goes in as text, so the request carries no tools and no tool_choice to reject.
+    const convo = asPlainTranscript(messages);
     pushMessage(convo, { role: "user", content: [{ type: "text", text: COMPACT_REQUEST }] });
     const req: CanonicalRequest = {
       model: connection.modelId,
       system: COMPACT_SYSTEM,
       messages: convo,
-      // Providers reject tool_use history without tool definitions, so keep them and forbid calls.
-      tools: tools.length ? tools.map((t) => t.definition) : undefined,
-      toolChoice: tools.length ? "none" : undefined,
       maxOutputTokens: Math.min(agent.params.maxOutputTokens ?? 8000, 8000),
     };
     let summary = "";

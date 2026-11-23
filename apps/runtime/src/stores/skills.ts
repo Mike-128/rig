@@ -98,7 +98,15 @@ export class SkillStore {
     if (workspace) for (const d of PROJECT_SKILL_DIRS) layers.push(this.scanDir(path.join(workspace, d), "project"));
     layers.push(this.scanDir(this.userDir, "user"));
     const team = this.teamDir();
-    if (team) layers.push(this.scanDir(path.join(team, "skills"), "team"));
+    if (team) {
+      layers.push(this.scanDir(path.join(team, "skills"), "team"));
+      // Skills that came with a shared agent live in its folder; a skill shared on its own wins a name clash.
+      const agentsDir = path.join(team, "agents");
+      if (existsSync(agentsDir)) {
+        const folders = readdirSync(agentsDir, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
+        for (const slug of folders) layers.push(this.scanDir(path.join(agentsDir, slug, "skills"), "team"));
+      }
+    }
     if (this.claudeDir) layers.push(this.scanDir(this.claudeDir, "claude"));
     if (this.bundledDir) layers.push(this.scanDir(this.bundledDir, "bundled"));
     const byName = new Map<string, Skill>();
