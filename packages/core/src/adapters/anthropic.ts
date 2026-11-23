@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Block, CanonicalRequest, RigError, Message, Model, StopReason, StreamEvent, Usage } from "../types";
 import type { AdapterConnection, ProviderAdapter } from "./types";
-import { cancelledError, errorFromStatus, isAbortError, networkError } from "./errors";
+import { apiError, cancelledError, connectionFailure, isAbortError } from "./errors";
 import type { ProbeResult } from "../gateway/probe";
 import { classifyProbeError, probeShapeProblem } from "../gateway/probe";
 
@@ -174,8 +174,8 @@ export const anthropicAdapter: ProviderAdapter = {
 
   normalizeError(err: unknown): RigError {
     if (isAbortError(err)) return cancelledError();
-    if (err instanceof Anthropic.APIConnectionError) return networkError(err.message);
-    if (err instanceof Anthropic.APIError) return errorFromStatus(err.status, err.message);
+    if (err instanceof Anthropic.APIConnectionError) return connectionFailure(err);
+    if (err instanceof Anthropic.APIError) return apiError(err);
     return { kind: "unknown", message: err instanceof Error ? err.message : String(err), retryable: false };
   },
 };

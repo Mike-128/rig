@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { explainTestResult, httpLabel, type TestContext, type TestExplanation } from "@rig/core/explain";
 import type { Connection, GatewayProfile, Model, ModelAlias } from "@rig/core/types";
 import { api } from "../api";
 import { announceSetupChange, STATUS_HELP, STATUS_LABEL, testResult, useSetup } from "../setup";
@@ -54,23 +55,36 @@ function formFor(m: Model): ManualForm {
   };
 }
 
-/** One sentence per probe, turning the per-model results into what to do next. */
-function findings(rows: Model[], listError?: string, found?: number): string[] {
+/** The full address a model's test request went to, query included. */
+function requestUrl(c: Connection, m: Model): string {
+  const q = m.query && Object.keys(m.query).length ? `?${new URLSearchParams(m.query).toString()}` : "";
+  return joinUrl(c.baseUrl, m.route) + q;
+}
+
+/** What the explanations need to know about how a request was sent. Header values are never shown. */
+function testContext(c: Connection, m: Model): TestContext {
+  return { authHeader: c.auth.headerName, extraHeaders: Object.keys(c.extraHeaders ?? {}), url: requestUrl(c, m) };
+}
+
+const names = (ms: Model[]) => (ms.length <= 3 ? ms.map((m) => m.displayName).join(", ") : `${ms.slice(0, 3).map((m) => m.displayName).join(", ")} and ${ms.length - 3} more`);
+
+/** What a test found, in sentences: what worked, and for each distinct problem what happened and what to do. */
+function findings(rows: Model[], c: Connection, listError?: string, found?: number): string[] {
   const tested = rows.filter((m) => !untested(m));
-  const count = (s: string) => tested.filter((m) => testResult(m) === s).length;
   const out: string[] = [];
-  const ok = count("entitled");
-  const codes = (s: string) => [...new Set(tested.filter((m) => testResult(m) === s && m.statusCode).map((m) => `HTTP ${m.statusCode}`))].join(" and ");
+  const ok = tested.filter((m) => explainTestResult(m)?.tone === "ok");
   if (!tested.length) out.push("Nothing was tested. Add a model, or check Discovery.");
-  else if (ok === tested.length) out.push(`${tested.length === 1 ? "The tested model" : `All ${tested.length} tested models`} answered successfully${codes("entitled") ? ` (${codes("entitled")})` : ""}.`);
-  else if (ok) out.push(`${ok} of ${tested.length} tested models answered successfully.`);
-  if (count("rejected")) out.push(`${count("rejected")} answered ${codes("rejected") || "with an error"}: the provider was reached but rejected the test request. A gateway that needs an extra header, such as a charge code, or a different request body answers this way. Read the message under Last test.`);
-  if (tested.length && count("unauthorized") === tested.length) out.push("The provider rejected the key for every model. Check the key and the header it is sent in, under Connection.");
-  else if (count("unauthorized")) out.push(`${count("unauthorized")} rejected the key.`);
-  if (count("forbidden")) out.push(`${count("forbidden")} answered "not allowed": the key works but has no access to ${count("forbidden") === 1 ? "that model" : "those models"}.`);
-  if (count("not_found")) out.push(`${count("not_found")} were not found. Check the base URL under Connection, and each model's route.`);
-  if (count("unknown")) out.push(`${count("unknown")} gave an unexpected answer, which usually means the base URL is wrong or unreachable. Check it under Connection.`);
-  if (count("rate_limited")) out.push(`${count("rate_limited")} were rate limited. Test them again in a minute.`);
+  else if (ok.length === tested.length) out.push(`${tested.length === 1 ? "The tested model" : `All ${tested.length} tested models`} answered successfully (${[...new Set(ok.map((m) => httpLabel(m.statusCode)))].join(", ")}).`);
+  else if (ok.length) out.push(`${ok.length} of ${tested.length} answered successfully: ${names(ok)}.`);
+  // One line per distinct problem, naming the models it affects.
+  const problems = new Map<string, { ex: TestExplanation; models: Model[] }>();
+  for (const m of tested) {
+    const ex = explainTestResult(m, testContext(c, m));
+    if (!ex || ex.tone === "ok") continue;
+    const key = `${ex.code}|${ex.meaning}`;
+    problems.set(key, { ex, models: [...(problems.get(key)?.models ?? []), m] });
+  }
+  for (const { ex, models } of problems.values()) out.push(`${names(models)}: ${ex.code}. ${ex.meaning}${ex.action ? ` ${ex.action}` : ""}`);
   if (found !== undefined) out.push(`The listing returned ${found} unique id${found === 1 ? "" : "s"}.`);
   if (listError) out.push(`Discovery: ${listError}`);
   return out;
@@ -163,7 +177,7 @@ export function ModelsPage() {
     setReport(null);
     await run(async () => {
       const res = await api<{ models: Model[]; listed: number; found?: number; listError?: string }>(`/connections/${conn.id}/probe?includeListed=${includeListed}&discover=${discover}`, { method: "POST" });
-      const lines = [...lead, ...findings(includeListed ? res.models : res.models.filter((m) => m.origin !== "listed"), res.listError, res.found)];
+      const lines = [...lead, ...findings(includeListed ? res.models : res.models.filter((m) => m.origin !== "listed"), conn, res.listError, res.found)];
       if (res.listed) lines.push(`${res.listed} new model${res.listed === 1 ? " was" : "s were"} added from the listing; models you already had keep their settings.${includeListed ? "" : " Scan inventory tests them too."}`);
       const hadDefault = aliases.some((a) => a.alias === "default");
       const after = await refresh();
@@ -486,6 +500,7 @@ function ModelsTab({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const [details, setDetails] = useState<string | null>(null);
   const boundTo = (m: Model) => aliases.filter((a) => a.connectionId === m.connectionId && a.modelId === m.providerModelId).map((a) => a.alias);
 
   // Models with aliases first, then by how usable they are, so the ones in use are at the top.
@@ -578,8 +593,12 @@ function ModelsTab({
             </tr>
           </thead>
           <tbody>
-            {shown.map((m) => (
-              <tr key={m.id}>
+            {shown.map((m) => {
+              const ex = explainTestResult(m, testContext(c, m));
+              const showing = details === m.id;
+              return (
+              <Fragment key={m.id}>
+              <tr className={showing ? "has-details" : undefined}>
                 <td>
                   <div className="model-name">{m.displayName}</div>
                   <div className="mono muted model-route">
@@ -592,9 +611,17 @@ function ModelsTab({
                   <span className={`badge ${testResult(m)}`} title={STATUS_HELP[testResult(m)]}>
                     {STATUS_LABEL[testResult(m)] ?? m.status}
                   </span>
-                  {m.statusCode !== undefined && <span className="mono status-code">HTTP {m.statusCode}</span>}
-                  {m.statusMessage && (
-                    <ClampedText className="result-detail" text={m.statusMessage} lines={2} />
+                  {ex && (
+                    <>
+                      <div className="mono status-code">
+                        {ex.code}
+                        {ex.latencyMs !== undefined && <span className="muted">, {ex.latencyMs} ms</span>}
+                      </div>
+                      {ex.tone !== "ok" && <ClampedText key={ex.meaning} className="result-detail" text={ex.meaning} lines={3} />}
+                      <button className="ghost tiny clamp-toggle" aria-expanded={showing} aria-controls={`details-${m.id}`} onClick={() => setDetails(showing ? null : m.id)}>
+                        {showing ? "Hide details" : "Details"}
+                      </button>
+                    </>
                   )}
                 </td>
                 <td>
@@ -616,7 +643,16 @@ function ModelsTab({
                   </div>
                 </td>
               </tr>
-            ))}
+              {showing && ex && (
+                <tr className="result-details-row">
+                  <td colSpan={4} id={`details-${m.id}`}>
+                    <ResultDetails ex={ex} connection={c} model={m} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
+              );
+            })}
             {!shown.length && (
               <tr>
                 <td colSpan={4} className="muted">
@@ -630,6 +666,51 @@ function ModelsTab({
         <p className="empty">No models yet. Test models to list them, or add one by id.</p>
       )}
     </>
+  );
+}
+
+/** Everything about one test: what happened, what to do, the provider's words, and the request Rig sent. */
+function ResultDetails({ ex, connection: c, model: m }: { ex: TestExplanation; connection: Connection; model: Model }) {
+  const extra = Object.keys(c.extraHeaders ?? {});
+  return (
+    <dl className={`result-details ${ex.tone}`}>
+      <dt>Result</dt>
+      <dd>
+        {ex.code}
+        {ex.latencyMs !== undefined && `, answered in ${ex.latencyMs} ms`}
+        {m.lastProbedAt && <span className="muted">, tested {new Date(m.lastProbedAt).toLocaleString()}</span>}
+      </dd>
+      <dt>What happened</dt>
+      <dd>{ex.meaning}</dd>
+      {ex.action && (
+        <>
+          <dt>What to do</dt>
+          <dd>{ex.action}</dd>
+        </>
+      )}
+      {ex.providerSaid && (
+        <>
+          <dt>{ex.code === "No answer" ? "Connection error" : "The provider said"}</dt>
+          <dd>
+            <ClampedText className="provider-said mono" text={ex.providerSaid} lines={4} />
+          </dd>
+        </>
+      )}
+      <dt>Request</dt>
+      <dd className="mono request-line">POST {requestUrl(c, m)}</dd>
+      <dt>Headers sent</dt>
+      <dd>
+        <span className="mono">{c.auth.headerName}</span> carrying the key{c.auth.prefix ? ` after "${c.auth.prefix.trim()}"` : ""}
+        {extra.length > 0 && (
+          <>
+            , and <span className="mono">{extra.join(", ")}</span>
+          </>
+        )}
+        . Values are not shown.
+      </dd>
+      <dt>Model in the body</dt>
+      <dd className="mono">{m.bodyModel || m.providerModelId}</dd>
+    </dl>
   );
 }
 

@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { resolveUpstream, type Dialect } from "@rig/core";
+import { connectionFailure, PROXY_ERROR_HEADER, resolveUpstream, type Dialect } from "@rig/core";
 import type { AppContext } from "./context";
 import { deploymentList } from "./deployment-list";
 
@@ -93,7 +93,17 @@ export function proxyRoutes(app: AppContext): Hono {
     try {
       upstream = await fetch(url, { method, headers, body, signal: c.req.raw.signal, redirect: "manual" });
     } catch (e) {
-      return c.json({ error: `upstream unreachable: ${(e as Error).message}` }, 502);
+      // Not an answer from the gateway: nothing answered. Say so, with the reason (DNS, refused,
+      // certificate), so the adapters report a failure to connect rather than a gateway 502.
+      const reason = connectionFailure(e).message.replace(/^fetch failed:?\s*/i, "") || "no reason given";
+      let host = url;
+      try {
+        host = new URL(url).host;
+      } catch {
+        /* keep the raw url */
+      }
+      c.header(PROXY_ERROR_HEADER, "unreachable");
+      return c.json({ error: { type: "rig_connection_error", message: `Could not connect to ${host}: ${reason}` } }, 502);
     }
     const outHeaders = new Headers();
     if (deploymentInventory && upstream.ok) {

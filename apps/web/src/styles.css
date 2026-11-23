@@ -1880,8 +1880,52 @@ button.clamp-toggle {
 }
 
 .status-code {
-  margin-left: var(--space-2xs);
+  margin-top: var(--space-3xs);
+  font-size: var(--text-xs);
   color: var(--color-ink-2);
+}
+/* a model's test, explained: a ruled note under its row */
+.model-table tr.has-details td {
+  border-bottom: 0;
+}
+.model-table .result-details-row td {
+  padding-top: 0;
+}
+.result-details {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--space-2xs) var(--space-md);
+  margin: 0;
+  padding: var(--space-xs) 0 var(--space-xs) var(--space-md);
+  border-left: 2px solid var(--color-cool);
+  font-size: var(--text-sm);
+}
+.result-details.warn {
+  border-left-color: var(--color-accent);
+}
+.result-details.bad {
+  border-left-color: var(--color-bad);
+}
+.result-details dt {
+  color: var(--color-muted);
+}
+.result-details dd {
+  margin: 0;
+  min-width: 0;
+  color: var(--color-ink);
+  overflow-wrap: anywhere;
+}
+.result-details .request-line,
+.result-details .provider-said {
+  font-size: var(--text-xs);
+}
+@media (max-width: 640px) {
+  .result-details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .result-details dd {
+    margin-bottom: var(--space-xs);
+  }
 }
 .grid2 > .span-all {
   grid-column: 1 / -1;

@@ -8,3 +8,4 @@ export * from "./memory";
 export * from "./gateway/profiles";
 export * from "./gateway/resolver";
 export * from "./gateway/probe";
+export * from "./gateway/explain";

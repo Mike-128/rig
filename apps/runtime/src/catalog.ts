@@ -108,7 +108,7 @@ export async function probeConnection(app: AppContext, conn: Connection, opts: {
 const NON_CHAT = /embed|transcribe|translate|tts|audio|speech|image|imagen|veo|whisper|rerank|moderation/i;
 
 /** Preview and experimental models usually carry much tighter quota, so they make a poor default. */
-const PREVIEW = /preview|experimental|-exp|-exp-/i;
+const PREVIEW = /preview|experimental|-exp\b|-exp-/i;
 
 /**
  * Bind the "default" alias if it is unset, so the seeded agents work as soon as a key is added.

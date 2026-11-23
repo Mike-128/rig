@@ -84,6 +84,22 @@ describe("model tests", () => {
     expect(byId(models, "wrong-dialect").statusMessage).toMatch(/dialect/);
   });
 
+  it("reports a gateway that cannot be reached as no answer with its cause, not as a gateway 502", async () => {
+    // A port that was free a moment ago, so nothing is listening on it.
+    const closed = http.createServer();
+    await new Promise<void>((r) => closed.listen(0, "127.0.0.1", () => r()));
+    const port = (closed.address() as { port: number }).port;
+    await new Promise((r) => closed.close(r));
+    const { connection } = await api<{ connection: Connection }>("/connections", "POST", {
+      name: "nothing-listening", profileId: "openai-compatible", key: "synthetic", baseUrl: `http://127.0.0.1:${port}`, kind: "gateway",
+      models: [{ id: "any-model", dialect: "openai.chat", route: "/v1/chat/completions" }],
+    });
+    const { models } = await api<{ models: Model[] }>(`/connections/${connection.id}/probe?discover=false`, "POST");
+    expect(models[0].status).toBe("unknown");
+    expect(models[0].statusCode).toBeUndefined();
+    expect(models[0].statusMessage).toMatch(new RegExp(`^Could not connect to 127\\.0\\.0\\.1:${port}: .*ECONNREFUSED`));
+  });
+
   it("answers 200 once the header is added, and clears the code when settings change", async () => {
     await api(`/connections/${conn.id}`, "PATCH", { extraHeaders: { "x-charge-code": "cc-123" } });
     const reset = (await api<Model[]>("/models")).filter((m) => m.connectionId === conn.id);

@@ -54,3 +54,44 @@ export function cancelledError(): RigError {
 export function networkError(message: string): RigError {
   return { kind: "network", message, retryable: true };
 }
+
+/** Set by Rig's local proxy on a response it made itself because the gateway could not be reached. */
+export const PROXY_ERROR_HEADER = "x-rig-proxy-error";
+
+/** True for the proxy's own "could not connect" answer, which is not an HTTP answer from the provider. */
+export function isProxyConnectionError(headers: unknown): boolean {
+  if (!headers) return false;
+  const h = headers as { get?: (name: string) => string | null } & Record<string, unknown>;
+  const value = typeof h.get === "function" ? h.get(PROXY_ERROR_HEADER) : h[PROXY_ERROR_HEADER];
+  return value === "unreachable";
+}
+
+/** The message inside the proxy's answer, without the SDK's "502 {json}" wrapping. */
+function proxyMessage(err: { message: string; error?: unknown }): string {
+  const e = err.error as { error?: { message?: unknown }; message?: unknown } | undefined;
+  const inner = e?.error?.message ?? e?.message;
+  return typeof inner === "string" ? inner : err.message.replace(/^\d{3}\s+/, "");
+}
+
+/** A provider error from the SDK, or Rig's own "could not connect" answer, as a RigError. */
+export function apiError(err: { status?: number; message: string; headers?: unknown; error?: unknown }): RigError {
+  if (isProxyConnectionError(err.headers)) return networkError(proxyMessage(err));
+  return errorFromStatus(err.status, err.message);
+}
+
+/**
+ * The SDKs report every failure to connect as "Connection error.", and keep the reason (DNS,
+ * refused, timeout, certificate) in a chain of causes. Bring the reason up so it can be shown.
+ */
+export function connectionFailure(err: unknown): RigError {
+  const top = err instanceof Error ? err.message : String(err);
+  const parts: string[] = [];
+  let cause: unknown = err;
+  for (let depth = 0; cause && depth < 6; depth++) {
+    const c = cause as { code?: unknown; message?: unknown; cause?: unknown };
+    if (typeof c.code === "string" && !parts.includes(c.code)) parts.push(c.code);
+    if (depth > 0 && typeof c.message === "string" && c.message && c.message !== top && !parts.some((p) => c.message === p)) parts.push(c.message);
+    cause = c.cause;
+  }
+  return networkError(parts.length ? `${top.replace(/\.$/, "")}: ${parts.join(", ")}` : top);
+}
