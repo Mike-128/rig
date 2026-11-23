@@ -31,7 +31,7 @@ const ManualModel = z.object({
 });
 
 const CreateConnection = z.object({
-  name: z.string().min(1).max(60),
+  name: z.string().trim().min(1, "Enter a name for the provider.").max(60, "Keep the name to 60 characters or fewer."),
   profileId: z.string().min(1),
   key: z.string().min(1),
   baseUrl: z.string().url().optional(),
@@ -74,13 +74,18 @@ export function catalogRoutes(app: AppContext): Hono {
 
   r.post("/connections", async (c) => {
     const parsed = CreateConnection.safeParse(await c.req.json());
-    if (!parsed.success) return c.json({ error: "invalid body", issues: parsed.error.issues }, 400);
+    if (!parsed.success) {
+      // The first problem, said plainly: the name's own messages stand alone, others name their field.
+      const issue = parsed.error.issues[0];
+      const error = issue?.path[0] === "name" ? issue.message : issue ? `${issue.path.join(".") || "body"}: ${issue.message}` : "invalid body";
+      return c.json({ error, issues: parsed.error.issues }, 400);
+    }
     const b = parsed.data;
     const profile = app.profiles.get(b.profileId);
     if (!profile) return c.json({ error: `unknown profile ${b.profileId}` }, 400);
     const headers = ExtraHeaders.safeParse({ ...profile.extraHeaders, ...b.extraHeaders });
     if (!headers.success || Object.keys(headers.data).includes((b.headerName ?? profile.auth.headerName).toLowerCase())) return c.json({ error: "Invalid extra headers; use the Key field for authentication" }, 400);
-    if (app.connections.getByName(b.name)) return c.json({ error: `connection "${b.name}" already exists` }, 409);
+    if (app.connections.getByName(b.name)) return c.json({ error: `A provider named "${b.name}" already exists. Choose another name.` }, 409);
     const id = newId("conn");
     await app.secrets.set(id, b.key);
     const kind = b.kind ?? (profile.id.includes("apim") || profile.id.includes("gateway") ? "gateway" : profile.baseUrl.includes("localhost") ? "local" : "direct");

@@ -963,7 +963,7 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
 
   const profile = profiles.find((p) => p.id === (profileId || profiles[0]?.id));
   const local = profile ? /localhost|127\.0\.0\.1/.test(profile.baseUrl) : false;
-  // A unique name the user can leave alone: the preset's id, numbered when taken.
+  // An example name for the placeholder: the preset's id, numbered when taken.
   const suggested = useMemo(() => {
     const base = profile?.id.replace(/-(direct|gateway)$/, "") ?? "provider";
     let n = 1;
@@ -972,10 +972,13 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
     return s;
   }, [profile, existing]);
   const needsUrl = Boolean(profile?.template) && !baseUrl.trim();
+  const trimmedName = name.trim();
+  const nameTaken = existing.some((c) => c.name.toLowerCase() === trimmedName.toLowerCase());
+  const nameProblem = !trimmedName ? "" : nameTaken ? `A provider named "${trimmedName}" already exists. Choose another name.` : trimmedName.length > 60 ? "Keep the name to 60 characters or fewer." : "";
   // A gateway template's built-in routes are examples, so naming the real model is the usual path there.
   const named = nameModel ?? Boolean(profile?.template && !local);
   const needsModel = named && (!model.id.trim() || !model.route.trim());
-  const blocked = busy || (!key && !local) || needsUrl || needsModel;
+  const blocked = busy || !trimmedName || Boolean(nameProblem) || (!key && !local) || needsUrl || needsModel;
 
   async function submit() {
     if (!profile || blocked) return;
@@ -985,7 +988,7 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
       const res = await api<{ connection: Connection }>("/connections", {
         method: "POST",
         json: {
-          name: name.trim() || suggested,
+          name: trimmedName,
           profileId: profile.id,
           key: key || (local ? "local" : ""),
           baseUrl: baseUrl.trim() || undefined,
@@ -1029,6 +1032,28 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
           {profile.description && <p className="hint">{profile.description}</p>}
         </li>
         <li>
+          <div className="step-title">Name it</div>
+          <label className="field">
+            <span className="sr-only">Provider name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={`e.g. ${suggested}`}
+              maxLength={60}
+              spellCheck={false}
+              aria-invalid={Boolean(nameProblem)}
+              aria-describedby="provider-name-hint"
+            />
+            <span className="hint" id="provider-name-hint">
+              {nameProblem ? (
+                <span className="issue error">{nameProblem}</span>
+              ) : (
+                "How this provider appears in Rig, for example work-gateway or anthropic. Agents refer to it by this name, so it cannot be changed later."
+              )}
+            </span>
+          </label>
+        </li>
+        <li>
           <div className="step-title">{local ? "Point Rig at the server" : "Paste the key"}</div>
           {profile.template && (
             <label className="field">
@@ -1060,11 +1085,6 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
           <details className="advanced">
             <summary>Advanced</summary>
             <div className="grid2">
-              <label className="field">
-                <span>Name</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder={suggested} />
-                <span className="hint">How this provider appears in Rig. Agents refer to it by this name, so it cannot be changed later.</span>
-              </label>
               <label className="field">
                 <span>Header for the key</span>
                 <input value={headerName} onChange={(e) => setHeaderName(e.target.value)} placeholder={profile.auth.headerName} />
