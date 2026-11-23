@@ -1,7 +1,8 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { explainTestResult, httpLabel, type TestContext, type TestExplanation } from "@rig/core/explain";
 import type { Connection, GatewayProfile, Model, ModelAlias } from "@rig/core/types";
 import { api } from "../api";
-import { announceSetupChange, STATUS_HELP, STATUS_LABEL, useSetup } from "../setup";
+import { announceSetupChange, STATUS_HELP, STATUS_LABEL, testResult, useSetup } from "../setup";
 import { DiscoverySettings, HeaderFields, headerRecord, headerRows, type HeaderRow } from "../ConnectionSettings";
 
 type ModelRow = Model & { connectionName: string };
@@ -54,21 +55,36 @@ function formFor(m: Model): ManualForm {
   };
 }
 
-/** One sentence per probe, turning the per-model results into what to do next. */
-function findings(rows: Model[], listError?: string, found?: number): string[] {
+/** The full address a model's test request went to, query included. */
+function requestUrl(c: Connection, m: Model): string {
+  const q = m.query && Object.keys(m.query).length ? `?${new URLSearchParams(m.query).toString()}` : "";
+  return joinUrl(c.baseUrl, m.route) + q;
+}
+
+/** What the explanations need to know about how a request was sent. Header values are never shown. */
+function testContext(c: Connection, m: Model): TestContext {
+  return { authHeader: c.auth.headerName, extraHeaders: Object.keys(c.extraHeaders ?? {}), url: requestUrl(c, m) };
+}
+
+const names = (ms: Model[]) => (ms.length <= 3 ? ms.map((m) => m.displayName).join(", ") : `${ms.slice(0, 3).map((m) => m.displayName).join(", ")} and ${ms.length - 3} more`);
+
+/** What a test found, in sentences: what worked, and for each distinct problem what happened and what to do. */
+function findings(rows: Model[], c: Connection, listError?: string, found?: number): string[] {
   const tested = rows.filter((m) => !untested(m));
-  const count = (s: string) => tested.filter((m) => m.status === s).length;
   const out: string[] = [];
+  const ok = tested.filter((m) => explainTestResult(m)?.tone === "ok");
   if (!tested.length) out.push("Nothing was tested. Add a model, or check Discovery.");
-  else if (count("entitled") === tested.length) out.push(tested.length === 1 ? "The tested model is reachable with this key." : `All ${tested.length} tested models are reachable with this key.`);
-  else if (count("entitled")) out.push(`${count("entitled")} of ${tested.length} tested models are reachable with this key.`);
-  if (count("entitled")) out.push("Reachable includes a request the provider rejected only for validation, so send a chat before relying on a model.");
-  if (tested.length && count("unauthorized") === tested.length) out.push("The provider rejected the key for every model. Check the key and the header it is sent in, under Connection.");
-  else if (count("unauthorized")) out.push(`${count("unauthorized")} rejected the key.`);
-  if (count("forbidden")) out.push(`${count("forbidden")} answered "not allowed": the key works but has no access to ${count("forbidden") === 1 ? "that model" : "those models"}.`);
-  if (count("not_found")) out.push(`${count("not_found")} were not found. Check the base URL under Connection, and each model's route.`);
-  if (count("unknown")) out.push(`${count("unknown")} gave an unexpected answer, which usually means the base URL is wrong or unreachable. Check it under Connection.`);
-  if (count("rate_limited")) out.push(`${count("rate_limited")} were rate limited. Test them again in a minute.`);
+  else if (ok.length === tested.length) out.push(`${tested.length === 1 ? "The tested model" : `All ${tested.length} tested models`} answered successfully (${[...new Set(ok.map((m) => httpLabel(m.statusCode)))].join(", ")}).`);
+  else if (ok.length) out.push(`${ok.length} of ${tested.length} answered successfully: ${names(ok)}.`);
+  // One line per distinct problem, naming the models it affects.
+  const problems = new Map<string, { ex: TestExplanation; models: Model[] }>();
+  for (const m of tested) {
+    const ex = explainTestResult(m, testContext(c, m));
+    if (!ex || ex.tone === "ok") continue;
+    const key = `${ex.code}|${ex.meaning}`;
+    problems.set(key, { ex, models: [...(problems.get(key)?.models ?? []), m] });
+  }
+  for (const { ex, models } of problems.values()) out.push(`${names(models)}: ${ex.code}. ${ex.meaning}${ex.action ? ` ${ex.action}` : ""}`);
   if (found !== undefined) out.push(`The listing returned ${found} unique id${found === 1 ? "" : "s"}.`);
   if (listError) out.push(`Discovery: ${listError}`);
   return out;
@@ -77,10 +93,11 @@ function findings(rows: Model[], listError?: string, found?: number): string[] {
 /** A provider's standing in the list, from its models' last results. */
 function standing(rows: Model[]): { label: string; status: string } {
   const tested = rows.filter((m) => !untested(m));
-  const ok = tested.filter((m) => m.status === "entitled").length;
+  const ok = tested.filter((m) => testResult(m) === "entitled").length;
   if (!rows.length) return { label: "No models", status: "unprobed" };
   if (!tested.length) return { label: "Not tested", status: "unprobed" };
   if (tested.every((m) => m.status === "unauthorized")) return { label: "Key rejected", status: "unauthorized" };
+  if (!ok && tested.some((m) => testResult(m) === "rejected")) return { label: "Request rejected", status: "rejected" };
   if (!ok) return { label: "Nothing reachable", status: "not_found" };
   return { label: `${ok} reachable`, status: ok === tested.length ? "entitled" : "rate_limited" };
 }
@@ -160,7 +177,7 @@ export function ModelsPage() {
     setReport(null);
     await run(async () => {
       const res = await api<{ models: Model[]; listed: number; found?: number; listError?: string }>(`/connections/${conn.id}/probe?includeListed=${includeListed}&discover=${discover}`, { method: "POST" });
-      const lines = [...lead, ...findings(includeListed ? res.models : res.models.filter((m) => m.origin !== "listed"), res.listError, res.found)];
+      const lines = [...lead, ...findings(includeListed ? res.models : res.models.filter((m) => m.origin !== "listed"), conn, res.listError, res.found)];
       if (res.listed) lines.push(`${res.listed} new model${res.listed === 1 ? " was" : "s were"} added from the listing; models you already had keep their settings.${includeListed ? "" : " Scan inventory tests them too."}`);
       const hadDefault = aliases.some((a) => a.alias === "default");
       const after = await refresh();
@@ -336,7 +353,7 @@ function DefaultModel({
                 .filter((m) => m.connectionId === c.id && (!BROKEN.has(m.status) || isDefault(m)))
                 .map((m) => (
                   <option key={m.id} value={`${m.connectionId}\n${m.providerModelId}`}>
-                    {m.displayName} ({STATUS_LABEL[m.status] ?? m.status})
+                    {m.displayName} ({STATUS_LABEL[testResult(m)] ?? m.status})
                   </option>
                 ))}
             </optgroup>
@@ -346,6 +363,8 @@ function DefaultModel({
       <div className="default-notes">
         {bound && BROKEN.has(bound.status) ? (
           <p className="issue error">The default model failed its last test. Pick another, or fix its provider below.</p>
+        ) : bound && testResult(bound) === "rejected" ? (
+          <p className="issue warning">The provider rejected the default model's test request (HTTP {bound.statusCode}). A required header may be missing. Read the message on its row below.</p>
         ) : !anyUsable ? (
           <p className="issue warning">No model has passed a test yet. Test a provider's models below.</p>
         ) : (
@@ -481,6 +500,7 @@ function ModelsTab({
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
+  const [details, setDetails] = useState<string | null>(null);
   const boundTo = (m: Model) => aliases.filter((a) => a.connectionId === m.connectionId && a.modelId === m.providerModelId).map((a) => a.alias);
 
   // Models with aliases first, then by how usable they are, so the ones in use are at the top.
@@ -573,8 +593,12 @@ function ModelsTab({
             </tr>
           </thead>
           <tbody>
-            {shown.map((m) => (
-              <tr key={m.id}>
+            {shown.map((m) => {
+              const ex = explainTestResult(m, testContext(c, m));
+              const showing = details === m.id;
+              return (
+              <Fragment key={m.id}>
+              <tr className={showing ? "has-details" : undefined}>
                 <td>
                   <div className="model-name">{m.displayName}</div>
                   <div className="mono muted model-route">
@@ -584,11 +608,20 @@ function ModelsTab({
                   <div className="muted small">{m.dialect === "anthropic.messages" ? "Anthropic Messages" : "OpenAI Chat Completions"}</div>
                 </td>
                 <td>
-                  <span className={`badge ${m.status}`} title={STATUS_HELP[m.status]}>
-                    {STATUS_LABEL[m.status] ?? m.status}
+                  <span className={`badge ${testResult(m)}`} title={STATUS_HELP[testResult(m)]}>
+                    {STATUS_LABEL[testResult(m)] ?? m.status}
                   </span>
-                  {m.statusMessage && (
-                    <ClampedText className="result-detail" text={m.statusMessage} lines={2} />
+                  {ex && (
+                    <>
+                      <div className="mono status-code">
+                        {ex.code}
+                        {ex.latencyMs !== undefined && <span className="muted">, {ex.latencyMs} ms</span>}
+                      </div>
+                      {ex.tone !== "ok" && <ClampedText key={ex.meaning} className="result-detail" text={ex.meaning} lines={3} />}
+                      <button className="ghost tiny clamp-toggle" aria-expanded={showing} aria-controls={`details-${m.id}`} onClick={() => setDetails(showing ? null : m.id)}>
+                        {showing ? "Hide details" : "Details"}
+                      </button>
+                    </>
                   )}
                 </td>
                 <td>
@@ -610,7 +643,16 @@ function ModelsTab({
                   </div>
                 </td>
               </tr>
-            ))}
+              {showing && ex && (
+                <tr className="result-details-row">
+                  <td colSpan={4} id={`details-${m.id}`}>
+                    <ResultDetails ex={ex} connection={c} model={m} />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
+              );
+            })}
             {!shown.length && (
               <tr>
                 <td colSpan={4} className="muted">
@@ -624,6 +666,51 @@ function ModelsTab({
         <p className="empty">No models yet. Test models to list them, or add one by id.</p>
       )}
     </>
+  );
+}
+
+/** Everything about one test: what happened, what to do, the provider's words, and the request Rig sent. */
+function ResultDetails({ ex, connection: c, model: m }: { ex: TestExplanation; connection: Connection; model: Model }) {
+  const extra = Object.keys(c.extraHeaders ?? {});
+  return (
+    <dl className={`result-details ${ex.tone}`}>
+      <dt>Result</dt>
+      <dd>
+        {ex.code}
+        {ex.latencyMs !== undefined && `, answered in ${ex.latencyMs} ms`}
+        {m.lastProbedAt && <span className="muted">, tested {new Date(m.lastProbedAt).toLocaleString()}</span>}
+      </dd>
+      <dt>What happened</dt>
+      <dd>{ex.meaning}</dd>
+      {ex.action && (
+        <>
+          <dt>What to do</dt>
+          <dd>{ex.action}</dd>
+        </>
+      )}
+      {ex.providerSaid && (
+        <>
+          <dt>{ex.code === "No answer" ? "Connection error" : "The provider said"}</dt>
+          <dd>
+            <ClampedText className="provider-said mono" text={ex.providerSaid} lines={4} />
+          </dd>
+        </>
+      )}
+      <dt>Request</dt>
+      <dd className="mono request-line">POST {requestUrl(c, m)}</dd>
+      <dt>Headers sent</dt>
+      <dd>
+        <span className="mono">{c.auth.headerName}</span> carrying the key{c.auth.prefix ? ` after "${c.auth.prefix.trim()}"` : ""}
+        {extra.length > 0 && (
+          <>
+            , and <span className="mono">{extra.join(", ")}</span>
+          </>
+        )}
+        . Values are not shown.
+      </dd>
+      <dt>Model in the body</dt>
+      <dd className="mono">{m.bodyModel || m.providerModelId}</dd>
+    </dl>
   );
 }
 
@@ -876,7 +963,7 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
 
   const profile = profiles.find((p) => p.id === (profileId || profiles[0]?.id));
   const local = profile ? /localhost|127\.0\.0\.1/.test(profile.baseUrl) : false;
-  // A unique name the user can leave alone: the preset's id, numbered when taken.
+  // An example name for the placeholder: the preset's id, numbered when taken.
   const suggested = useMemo(() => {
     const base = profile?.id.replace(/-(direct|gateway)$/, "") ?? "provider";
     let n = 1;
@@ -885,10 +972,13 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
     return s;
   }, [profile, existing]);
   const needsUrl = Boolean(profile?.template) && !baseUrl.trim();
+  const trimmedName = name.trim();
+  const nameTaken = existing.some((c) => c.name.toLowerCase() === trimmedName.toLowerCase());
+  const nameProblem = !trimmedName ? "" : nameTaken ? `A provider named "${trimmedName}" already exists. Choose another name.` : trimmedName.length > 60 ? "Keep the name to 60 characters or fewer." : "";
   // A gateway template's built-in routes are examples, so naming the real model is the usual path there.
   const named = nameModel ?? Boolean(profile?.template && !local);
   const needsModel = named && (!model.id.trim() || !model.route.trim());
-  const blocked = busy || (!key && !local) || needsUrl || needsModel;
+  const blocked = busy || !trimmedName || Boolean(nameProblem) || (!key && !local) || needsUrl || needsModel;
 
   async function submit() {
     if (!profile || blocked) return;
@@ -898,7 +988,7 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
       const res = await api<{ connection: Connection }>("/connections", {
         method: "POST",
         json: {
-          name: name.trim() || suggested,
+          name: trimmedName,
           profileId: profile.id,
           key: key || (local ? "local" : ""),
           baseUrl: baseUrl.trim() || undefined,
@@ -942,6 +1032,28 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
           {profile.description && <p className="hint">{profile.description}</p>}
         </li>
         <li>
+          <div className="step-title">Name it</div>
+          <label className="field">
+            <span className="sr-only">Provider name</span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={`e.g. ${suggested}`}
+              maxLength={60}
+              spellCheck={false}
+              aria-invalid={Boolean(nameProblem)}
+              aria-describedby="provider-name-hint"
+            />
+            <span className="hint" id="provider-name-hint">
+              {nameProblem ? (
+                <span className="issue error">{nameProblem}</span>
+              ) : (
+                "How this provider appears in Rig, for example work-gateway or anthropic. Agents refer to it by this name, so it cannot be changed later."
+              )}
+            </span>
+          </label>
+        </li>
+        <li>
           <div className="step-title">{local ? "Point Rig at the server" : "Paste the key"}</div>
           {profile.template && (
             <label className="field">
@@ -973,11 +1085,6 @@ function AddProvider({ profiles, existing, onAdded, onCancel }: { profiles: Gate
           <details className="advanced">
             <summary>Advanced</summary>
             <div className="grid2">
-              <label className="field">
-                <span>Name</span>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder={suggested} />
-                <span className="hint">How this provider appears in Rig. Agents refer to it by this name, so it cannot be changed later.</span>
-              </label>
               <label className="field">
                 <span>Header for the key</span>
                 <input value={headerName} onChange={(e) => setHeaderName(e.target.value)} placeholder={profile.auth.headerName} />

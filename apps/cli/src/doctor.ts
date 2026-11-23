@@ -4,6 +4,7 @@ import { access, mkdtemp, readFile, rmdir, unlink, writeFile } from "node:fs/pro
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { explainTestResult } from "@rig/core/explain";
 
 export interface Check {
   id: string;
@@ -104,10 +105,16 @@ export async function checkRuntime(options: DoctorOptions, fetcher: typeof fetch
       checks.push({ id: "default-model", status: "pass", message: "Default alias resolves to a registered model. Saved entitlement is not a live connectivity test." });
       if (options.probe) {
         // The existing runtime probe owns credentials and uses a 30-second SDK deadline.
-        const result = await request(`/models/${encodeURIComponent(model.connectionId)}/${encodeURIComponent(model.providerModelId)}/probe`, "POST", Math.max(options.timeoutMs, 35_000)) as { status?: string };
-        checks.push({ id: "provider-probe", status: result?.status === "entitled" ? "pass" : "fail", message: result?.status === "entitled"
-          ? "Default model probe reached the provider. Entitlement includes validation responses; streaming and tool execution are not verified."
-          : "Default model probe did not establish entitlement. Inspect Models for details; check gateway access, authentication, and quota." });
+        const result = await request(`/models/${encodeURIComponent(model.connectionId)}/${encodeURIComponent(model.providerModelId)}/probe`, "POST", Math.max(options.timeoutMs, 35_000)) as { status?: string; statusCode?: number; statusMessage?: string };
+        const ex = result?.status ? explainTestResult({ status: result.status, statusCode: result.statusCode, statusMessage: result.statusMessage }) : undefined;
+        const said = ex?.providerSaid ? ` Provider said: ${ex.providerSaid}` : "";
+        checks.push({
+          id: "provider-probe",
+          status: ex?.tone === "ok" ? "pass" : ex?.tone === "warn" ? "warn" : "fail",
+          message: ex
+            ? `${ex.code}. ${ex.meaning}${ex.action ? ` ${ex.action}` : ""}${said}${ex.tone === "ok" ? " Streaming and tool execution are not verified." : ""}`
+            : "Default model probe returned no result. Check runtime logs and model configuration.",
+        });
       }
     }
   } catch {

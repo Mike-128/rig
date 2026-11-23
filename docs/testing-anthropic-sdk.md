@@ -25,9 +25,9 @@ Open [http://127.0.0.1:7777](http://127.0.0.1:7777). The built UI does not requi
 | Connection field | Setting |
 | --- | --- |
 | Choose where the models run | **Azure API Management gateway (template)** |
+| Name it | A recognizable local name, such as `claude-apim-test` |
 | Base URL | Gateway origin, for example `https://gateway.example.com` |
 | Key | Your APIM subscription key, entered only in this field |
-| Advanced › Name | A recognizable local name, such as `claude-apim-test` |
 | Advanced › Header for the key | Your gateway's documented header; commonly `Ocp-Apim-Subscription-Key` |
 | Advanced › Additional request headers | Required non-secret metadata as header/value rows, for example `x-project-code` / `demo-project` |
 | Choose the model | **I'll name the model and its route** (the default for this template), filled in with the model fields from step 3 |

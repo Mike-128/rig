@@ -120,7 +120,9 @@ If Git refuses a fast-forward, stop and inspect the branch/local commits rather 
 
 The seeded agents are **Coder** (software engineering in a project folder), **Assistant** (general chat), and **Agent Builder**. Create your own in **Agents**: instructions, model (an alias or an explicit model), tools, approvals, sandbox level, and budgets. Saving creates a versioned YAML file under `~/.rig/agents`.
 
-Tools: `file_read`, `glob`, `grep`, `file_edit`, `file_write`, `shell`, `web_fetch`, `todo_write`, `task` (sub-agents), `load_skill`, the rig management tools, and MCP tools. Read-only calls in one turn run in parallel. On Windows, `shell` uses Git Bash when it is installed, then PowerShell 7, then Windows PowerShell; set `RIG_SHELL` to choose.
+Tools: `file_read`, `glob`, `grep`, `file_edit`, `file_write`, `shell`, `web_fetch`, `document_create`, `todo_write`, `task` (sub-agents), `load_skill`, the rig management tools, and MCP tools. Read-only calls in one turn run in parallel. On Windows, `shell` uses Git Bash when it is installed, then PowerShell 7, then Windows PowerShell; set `RIG_SHELL` to choose.
+
+`document_create` turns Markdown into a file the user downloads from the chat: a Word document (`.docx`), a web page, Markdown, or CSV. Files go to `outputs/` in the session's folder and are never overwritten; the chat shows a card with **Download** (and **Open** in the desktop app). The Assistant and Coder have it; add it to your own agents on the Agents page.
 
 ### Building agents by chatting
 
@@ -163,7 +165,7 @@ A small team shares agents, skills, and memory through a GitHub repository. Ever
    - **Token**: a fine-grained token for the team repo with Contents and Pull requests set to read and write.
    - **Browser sign-in**: needs the client ID of an OAuth app your enterprise has approved.
 3. **Connect the repository** (`owner/name` or its URL). The first person sets up an empty repo with one click.
-4. **Share.** *Share with team* on an agent or skill, a team memory on the Memory page, or an agent's own `memory_write` to the team: each queues a change. *Open pull request* in Settings › Team and GitHub turns the queue into one branch, commit, and pull request in your name. Personal skills an agent uses go with it.
+4. **Share.** *Share with team* on an agent or skill, a team memory on the Memory page, or an agent's own `memory_write` to the team: each queues a change. *Open pull request* in Settings › Team and GitHub turns the queue into one branch, commit, and pull request in your name. Each agent gets its own folder, `agents/<slug>/`, holding `agent.yaml`, a generated `README.md`, and the personal skills it uses under `skills/`. Agents shared in the earlier flat layout (`agents/<slug>.yaml`) still load, and move into a folder the next time they are shared.
 5. **Review on GitHub.** Teammates review and merge as they would any pull request. Rig shows each pull request's review state, and everyone picks up merged changes at startup, every five minutes, or with *Sync now*.
 
 Team agents are read-only on each machine: editing one proposes a change instead of saving it. A personal agent with the same slug shadows the team's, so you can try changes before proposing them.

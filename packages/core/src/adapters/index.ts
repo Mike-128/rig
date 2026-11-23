@@ -17,4 +17,4 @@ export function adapterFor(dialect: Dialect): ProviderAdapter {
 export type { ProviderAdapter, AdapterConnection } from "./types";
 export { anthropicAdapter, openaiAdapter };
 export { parseToolArguments } from "./tool-args";
-export { errorFromStatus, cancelledError, networkError, isAbortError } from "./errors";
+export { apiError, errorFromStatus, cancelledError, connectionFailure, isProxyConnectionError, networkError, isAbortError, PROXY_ERROR_HEADER } from "./errors";

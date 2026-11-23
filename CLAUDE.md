@@ -13,7 +13,7 @@ Read the progress and private-setup boundary in AGENTS.md section 9 before worki
 
 The user's manually configured model now works, but inventory scanning still needs real-gateway validation of the new explicit Azure deployment response format. Direct PowerShell listing worked. Provider model lists and Azure deployment inventories have different shapes: a resource `id`, deployment `name`, and model-family name are not interchangeable. Do not claim arbitrary inventory responses are supported just because a listing route can be configured. Pressure-test with synthetic fixtures and keep failures visible.
 
-Use `docs/windows-setup.md` for normal, non-administrator PowerShell commands, per-terminal pnpm PATH, runtime certificate trust, and build/restart steps. `pnpm rig doctor` makes no provider request by default; `--probe` explicitly tests the default model and may incur usage. A validation-only 400 is classified as entitled but does not prove a successful chat.
+Use `docs/windows-setup.md` for normal, non-administrator PowerShell commands, per-terminal pnpm PATH, runtime certificate trust, and build/restart steps. `pnpm rig doctor` makes no provider request by default; `--probe` explicitly tests the default model and may incur usage. A validation-only 400 is still classified as entitled for routing, but the Models page shows it as **Request rejected** with its HTTP status and message; it does not prove a successful chat.
 
 Connection headers are non-secret metadata stored locally and forwarded by the runtime proxy to listing, probes, and inference. Credentials stay in the secret backend; adapters never receive them. Preserve authentication-header protections and keep inference dialect/route on each Model.
 

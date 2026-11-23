@@ -52,6 +52,18 @@ describe("adding a provider with a named model", () => {
     expect(stored.map((m) => m.providerModelId)).toEqual(["mock-gpt"]);
   });
 
+  it("requires a name of its own, trimmed, and says plainly what is wrong", async () => {
+    const add = (name: string) => call("/connections", "POST", { name, profileId: "apim-gateway", key: "synthetic", baseUrl: "https://gateway.example" });
+    const blank = await add("   ");
+    expect(blank.status).toBe(400);
+    expect(((await blank.json()) as { error: string }).error).toBe("Enter a name for the provider.");
+    const made = await api<{ connection: Connection }>("/connections", "POST", { name: "  work-gateway  ", profileId: "apim-gateway", key: "synthetic", baseUrl: "https://gateway.example" });
+    expect(made.connection.name).toBe("work-gateway");
+    const taken = await add("work-gateway");
+    expect(taken.status).toBe(409);
+    expect(((await taken.json()) as { error: string }).error).toBe('A provider named "work-gateway" already exists. Choose another name.');
+  });
+
   it("still seeds the template's examples when no model is named", async () => {
     const res = await api<{ models: Model[] }>("/connections", "POST", { name: "gateway-plain", profileId: "apim-gateway", key: "synthetic", baseUrl: "https://gateway.example" });
     expect(res.models.length).toBeGreaterThan(0);

@@ -4,9 +4,17 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { existsSync, readFileSync, statSync } from "node:fs";
-import { PERMISSION_MODES, projectMessages, resolveInWorkspace, TERMINAL_EVENTS, walkFiles, type PermissionMode, type RunEvent, type Session } from "@rig/core";
+import { OUTPUT_DIR, PERMISSION_MODES, projectMessages, resolveInWorkspace, TERMINAL_EVENTS, walkFiles, type PermissionMode, type RunEvent, type Session } from "@rig/core";
 import type { AppContext } from "../context";
 import { newId } from "../ids";
+
+/** Content types for created documents; anything else downloads as bytes. */
+const DOWNLOAD_TYPES: Record<string, string> = {
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  html: "text/html; charset=utf-8",
+  md: "text/markdown; charset=utf-8",
+  csv: "text/csv; charset=utf-8",
+};
 
 /** Skill invocations look like "/name rest of the request". */
 const SLASH = /^\/([a-z0-9][a-z0-9-]{0,63})(?:\s+([\s\S]*))?$/;
@@ -123,7 +131,32 @@ export function sessionRoutes(app: AppContext): Hono {
     const s = app.sessions.getSession(c.req.param("id"));
     if (!s) return c.json({ error: "not found" }, 404);
     if (app.runs.activeRunFor(s.id)) return c.json({ error: "wait for the current run to finish, or stop it" }, 409);
-    return c.json(app.runs.submit(s, "", { compactOnly: true }), 202);
+    const run = app.runs.submit(s, "", { compactOnly: true });
+    return c.json(app.sessions.getRun(run.id) ?? run, 202);
+  });
+
+  /** A document an agent created with document_create, as a download. Only files directly in outputs/. */
+  r.get("/sessions/:id/outputs/:name", (c) => {
+    const s = app.sessions.getSession(c.req.param("id"));
+    if (!s) return c.json({ error: "not found" }, 404);
+    const name = c.req.param("name");
+    if (!name || /[\\/]/.test(name) || name === "." || name === "..") return c.json({ error: "invalid file name" }, 400);
+    let abs: string;
+    try {
+      abs = resolveInWorkspace(s.workspace, `${OUTPUT_DIR}/${name}`);
+    } catch {
+      return c.json({ error: "invalid file name" }, 400);
+    }
+    if (!existsSync(abs) || !statSync(abs).isFile()) return c.json({ error: "not found" }, 404);
+    const ext = path.extname(name).slice(1).toLowerCase();
+    return new Response(readFileSync(abs), {
+      headers: {
+        "content-type": DOWNLOAD_TYPES[ext] ?? "application/octet-stream",
+        "content-disposition": `attachment; filename="${name.replace(/[^\x20-\x7e]|"/g, "_")}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+        "x-content-type-options": "nosniff",
+        "cache-control": "no-store",
+      },
+    });
   });
 
   /** Fuzzy file search in the session's folder, for @mentions. */
@@ -162,7 +195,9 @@ export function sessionRoutes(app: AppContext): Hono {
     const turn = attachMentions(s, expandSlashSkill(app, s, b.data.input));
     // A message sent while the agent is working steers it: it reaches the model at the next turn boundary.
     if (app.runs.steer(s.id, turn.input)) return c.json({ steered: true, runId: app.runs.activeRunFor(s.id)?.id }, 202);
-    return c.json(app.runs.submit(s, turn.input, { display: turn.display }), 202);
+    // A run can fail before this returns (an agent whose model is gone), so answer with its stored state.
+    const run = app.runs.submit(s, turn.input, { display: turn.display });
+    return c.json(app.sessions.getRun(run.id) ?? run, 202);
   });
 
   /** Live event stream for a session, resumable with ?after=<event id>. */

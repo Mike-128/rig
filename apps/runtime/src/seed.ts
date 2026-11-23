@@ -7,8 +7,8 @@ const ASSISTANT: AgentDefinitionInput = {
   description: 'Default chat assistant. Uses the model bound to the "default" alias.',
   model: { alias: "default" },
   instructions:
-    "You are a helpful, direct assistant. Answer concisely. When a question needs current information from the web, use web_fetch. When the user refers to files in the workspace, read them with file_read before answering.",
-  tools: ["web_fetch", "file_read"],
+    "You are a helpful, direct assistant. Answer concisely. When a question needs current information from the web, use web_fetch. When the user refers to files in the workspace, read them with file_read before answering. When the user asks for a document, report, letter, or file (a Word document, web page, Markdown, or CSV), create it with document_create so they can download it; do not tell them to copy and save the text themselves.",
+  tools: ["web_fetch", "file_read", "document_create"],
   sandbox: 1,
   approvals: [],
   budget: { maxTurns: 10 },
@@ -86,7 +86,7 @@ const CODER: AgentDefinitionInput = {
 ## Communicating
 
 Be concise and direct. Lead with the outcome. Reference code as path:line. Report failures honestly with the relevant output, and do not claim something works that you have not checked.`,
-  tools: ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "todo_write", "task", "load_skill", "memory_read", "memory_write", "mcp__*"],
+  tools: ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "document_create", "todo_write", "task", "load_skill", "memory_read", "memory_write", "mcp__*"],
   skills: ["*"],
   sandbox: 1,
   approvals: ["file_edit", "file_write", "shell", "memory_write"],
@@ -95,11 +95,28 @@ Be concise and direct. Lead with the outcome. Reference code as path:line. Repor
 };
 
 /** Create the built-in agents if they are missing. Existing ones are never overwritten. */
+/** The Assistant as earlier versions seeded it, before it could create documents. */
+const ASSISTANT_BEFORE_DOCUMENTS = {
+  instructions:
+    "You are a helpful, direct assistant. Answer concisely. When a question needs current information from the web, use web_fetch. When the user refers to files in the workspace, read them with file_read before answering.",
+  tools: ["web_fetch", "file_read"],
+};
+
 export function seedDefaults(app: AppContext): void {
   const have = new Set(app.agents.list().map((a) => a.slug));
   for (const def of [CODER, ASSISTANT, AGENT_BUILDER]) {
     if (have.has(def.slug!)) continue;
     const res = app.agents.save(def, { knownSkills: app.skills.names() });
     if (!res.ok) console.warn(`[rig] could not seed agent "${def.slug}":`, res.issues);
+  }
+  // An Assistant nobody has edited gets document_create; an edited one is the user's and is left alone.
+  const assistant = app.agents.get(ASSISTANT.slug!);
+  if (
+    assistant &&
+    assistant.instructions === ASSISTANT_BEFORE_DOCUMENTS.instructions &&
+    JSON.stringify(assistant.tools) === JSON.stringify(ASSISTANT_BEFORE_DOCUMENTS.tools)
+  ) {
+    const res = app.agents.save({ ...assistant, instructions: ASSISTANT.instructions, tools: ASSISTANT.tools }, { knownSkills: app.skills.names() });
+    if (!res.ok) console.warn("[rig] could not update the Assistant agent:", res.issues);
   }
 }

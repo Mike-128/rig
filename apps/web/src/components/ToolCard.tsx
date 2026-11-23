@@ -1,5 +1,7 @@
 import { diffLines } from "diff";
 import { useEffect, useRef, useState } from "react";
+import type { Session } from "@rig/core/types";
+import { desktop } from "../desktop";
 import type { ToolItem } from "../events";
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -24,6 +26,8 @@ export function toolTitle(t: Pick<ToolItem, "name" | "input">): { verb: string; 
       return { verb: "Run", target: str(i.command) };
     case "web_fetch":
       return { verb: "Fetch", target: str(i.url) };
+    case "document_create":
+      return { verb: "Create", target: `${str(i.filename)}.${str(i.format)}` };
     case "todo_write":
       return { verb: "Plan", target: "" };
     case "task":
@@ -92,7 +96,40 @@ function LiveOutput({ text }: { text: string }) {
   );
 }
 
-export function ToolCard({ t }: { t: ToolItem }) {
+const DOCUMENT_KIND: Record<string, string> = { docx: "Word document", html: "Web page", md: "Markdown", csv: "CSV spreadsheet" };
+
+/** A workspace-relative path as a local path, with the workspace's own separator. */
+function localPath(workspace: string, rel: string): string {
+  const sep = workspace.includes("\\") ? "\\" : "/";
+  return `${workspace.replace(/[\\/]+$/, "")}${sep}${rel.split("/").join(sep)}`;
+}
+
+/** A created document, with the way to get it: download in a browser, open in the desktop app. */
+function DocumentCard({ path, size, session }: { path: string; size: string; session: Pick<Session, "id" | "workspace"> }) {
+  const name = path.split("/").pop() ?? path;
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const href = `/api/sessions/${encodeURIComponent(session.id)}/outputs/${encodeURIComponent(name)}`;
+  return (
+    <div className="document-card">
+      <div className="document-meta">
+        <strong className="document-name">{name}</strong>
+        <span className="muted small">
+          {DOCUMENT_KIND[ext] ?? "File"}, {size}
+        </span>
+      </div>
+      <div className="row tight">
+        <a className="btn btn-primary" href={href} download={name}>
+          Download
+        </a>
+        {desktop && (
+          <button onClick={() => desktop!.openPath(localPath(session.workspace, path))}>Open</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export function ToolCard({ t, session }: { t: ToolItem; session?: Pick<Session, "id" | "workspace"> }) {
   const i = (t.input ?? {}) as Record<string, unknown>;
   const showsDiff = t.name === "file_edit" || t.name === "file_write";
   const [open, setOpen] = useState<boolean | undefined>(undefined);
@@ -101,6 +138,15 @@ export function ToolCard({ t }: { t: ToolItem }) {
   const { verb, target } = toolTitle(t);
   const note = resultNote(t);
   const state = t.status !== "done" ? t.status : t.isError ? "error" : "ok";
+
+  const created = t.name === "document_create" && t.status === "done" && !t.isError ? (t.output ?? "").match(/^Created (outputs\/.+) \(([^)]+)\)\./) : null;
+  if (created && session) {
+    return (
+      <div className="tool-document">
+        <DocumentCard path={created[1]} size={created[2]} session={session} />
+      </div>
+    );
+  }
 
   if (t.name === "todo_write") {
     const todos = (i.todos as { content: string; status: string }[] | undefined) ?? [];

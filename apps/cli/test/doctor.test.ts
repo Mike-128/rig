@@ -59,12 +59,13 @@ describe("doctor", () => {
     expect(fetcher.mock.calls[3][0]).toBe("http://127.0.0.1:7777/api/models/conn%2Fa/model%2Fb/probe");
     expect(fetcher.mock.calls[3][1]?.method).toBe("POST");
     expect(report.at(-1)?.status).toBe("pass");
-    expect(report.at(-1)?.message).toContain("streaming and tool execution are not verified");
+    expect(report.at(-1)?.message).toContain("Streaming and tool execution are not verified");
   });
 
-  it("reports denied entitlement as failure", async () => {
+  it("reports denied entitlement as failure, saying what happened and what to do", async () => {
     const report = await checkRuntime({ ...options, probe: true }, mockApi("forbidden"));
     expect(report.at(-1)?.status).toBe("fail");
+    expect(report.at(-1)?.message).toMatch(/^HTTP 403 Forbidden\. The key is valid, but it is not allowed to use this model/);
   });
 
   it("does not probe when the default alias is absent", async () => {

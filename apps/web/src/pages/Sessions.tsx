@@ -16,6 +16,7 @@ interface SessionDetail {
 }
 
 const MODES: PermissionMode[] = ["default", "acceptEdits", "plan", "auto"];
+const OPEN_RUN = new Set(["queued", "running", "awaiting_approval"]);
 const basename = (p: string) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || p;
 const fmtTokens = (n: number) => (n >= 1_000_000 ? `${(n / 1_000_000).toFixed(1)}M` : n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n));
 
@@ -159,9 +160,10 @@ export function SessionsPage({ sessionId, home, ready }: { sessionId?: string; h
     if (builtin) return runBuiltin(builtin.name, cmd![2]?.trim() ?? "");
     if (!session) return;
     try {
-      const res = await api<{ steered?: boolean }>(`/sessions/${session.id}/runs`, { method: "POST", json: { input: text } });
+      const res = await api<{ steered?: boolean; status?: string }>(`/sessions/${session.id}/runs`, { method: "POST", json: { input: text } });
       if (res.steered) setSteering((q) => [...q, text]);
-      else setThread((s) => ({ ...s, status: "running" }));
+      // A run that already ended (it failed to start) has sent its events; do not show it as working.
+      else if (!res.status || OPEN_RUN.has(res.status)) setThread((s) => ({ ...s, status: "running" }));
       stick.current = true;
     } catch (e) {
       setError((e as Error).message);
@@ -176,8 +178,8 @@ export function SessionsPage({ sessionId, home, ready }: { sessionId?: string; h
       case "compact":
         if (!session) return;
         try {
-          await api(`/sessions/${session.id}/compact`, { method: "POST" });
-          setThread((s) => ({ ...s, status: "running" }));
+          const res = await api<{ status?: string }>(`/sessions/${session.id}/compact`, { method: "POST" });
+          if (!res.status || OPEN_RUN.has(res.status)) setThread((s) => ({ ...s, status: "running" }));
         } catch (e) {
           setError((e as Error).message);
         }
@@ -324,7 +326,7 @@ export function SessionsPage({ sessionId, home, ready }: { sessionId?: string; h
                 </div>
               )}
               {thread.items.map((it) => (
-                <Item key={it.key} it={it} onDecide={decide} />
+                <Item key={it.key} it={it} onDecide={decide} session={session} />
               ))}
               {running && <LiveTurn thread={thread} />}
             </div>
@@ -397,7 +399,7 @@ export function SessionsPage({ sessionId, home, ready }: { sessionId?: string; h
   );
 }
 
-function Item({ it, onDecide }: { it: ThreadItem; onDecide: (t: ToolItem, d: ApprovalDecision) => void }) {
+function Item({ it, onDecide, session }: { it: ThreadItem; onDecide: (t: ToolItem, d: ApprovalDecision) => void; session?: Pick<Session, "id" | "workspace"> }) {
   switch (it.kind) {
     case "user":
       return (
@@ -426,7 +428,7 @@ function Item({ it, onDecide }: { it: ThreadItem; onDecide: (t: ToolItem, d: App
     case "tool":
       return (
         <div className="turn tool-turn">
-          <ToolCard t={it} />
+          <ToolCard t={it} session={session} />
           {it.status === "awaiting_approval" && (
             <div className="inline-approve">
               <button className="primary" onClick={() => onDecide(it, "approve")}>

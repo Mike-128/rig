@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { agentToYaml, validateAgentDefinition, type AgentDefinition } from "@rig/core";
 import type { AppContext } from "../context";
-import { TeamManager } from "../team";
+import { agentPaths, TeamManager } from "../team";
 
 const fail = (e: unknown) => ({ error: (e as Error).message });
 
@@ -164,23 +164,59 @@ function stageAgent(app: AppContext, def: AgentDefinition) {
   }
   const team = app.agents.getTeam(def.slug);
   const shared: AgentDefinition = { ...def, version: team ? team.version + 1 : 1 };
-  const staged = [
+  const paths = agentPaths(def.slug);
+  // Personal skills the agent relies on would be missing for teammates, so they travel in its folder.
+  const brought: string[] = [];
+  const skillFiles: Record<string, string> = {};
+  for (const name of def.skills) {
+    if (name === "*") continue;
+    const skill = app.skills.get(name);
+    if (!skill || skill.source === "team" || skill.source === "bundled") continue;
+    Object.assign(skillFiles, TeamManager.skillFiles(name, skill.dir, `${paths.dir}skills/${name}`));
+    brought.push(name);
+  }
+  const b64 = (text: string) => Buffer.from(text).toString("base64");
+  return [
     app.team.stage({
       kind: "agent",
       name: def.slug,
       op: "upsert",
-      files: { [`agents/${def.slug}.yaml`]: Buffer.from(agentToYaml(shared)).toString("base64") },
-      summary: `${team ? "update" : "add"} agent "${def.name}"${def.description ? `: ${def.description}` : ""}`,
+      files: { [paths.definition]: b64(agentToYaml(shared)), [paths.readme]: b64(agentReadme(shared, brought)), ...skillFiles },
+      summary: `${team ? "update" : "add"} agent "${def.name}"${def.description ? `: ${def.description}` : ""}${brought.length ? ` (with skill${brought.length === 1 ? "" : "s"} ${brought.join(", ")})` : ""}`,
       origin: "user",
     }),
   ];
-  // Personal skills the agent relies on would be missing for teammates; they go in the same pull request.
-  for (const name of def.skills) {
-    if (name === "*") continue;
-    const skill = app.skills.get(name);
-    if (skill && skill.source !== "team" && skill.source !== "bundled") staged.push(stageSkill(app, name));
-  }
-  return staged;
+}
+
+/** The README in an agent's folder: what it is and what it needs, for people browsing the repo. */
+export function agentReadme(def: AgentDefinition, brought: string[]): string {
+  const model = "alias" in def.model ? `the \`${def.model.alias}\` alias, which each person maps to a model in Settings › Models` : "a specific model";
+  const list = (items: readonly string[]) => (items.length ? items.map((i) => `\`${i}\``).join(", ") : "none");
+  const skills = def.skills.filter((s) => s !== "*");
+  return [
+    `# ${def.name}`,
+    "",
+    def.description ?? "",
+    "",
+    `| | |`,
+    `|---|---|`,
+    `| Slug | \`${def.slug}\` |`,
+    `| Version | ${def.version} |`,
+    `| Model | ${model} |`,
+    `| Tools | ${list(def.tools)} |`,
+    `| Needs approval | ${list(def.approvals)} |`,
+    `| Skills | ${def.skills.includes("*") ? "every available skill" : list(skills)} |`,
+    "",
+    "## Files",
+    "",
+    "- `agent.yaml`: the definition Rig loads. Edit it through Rig, which proposes changes as a pull request.",
+    ...(brought.length ? [`- \`skills/\`: skills this agent brings (${list(brought)}). Teammates get them with the agent.`] : []),
+    "",
+    `Rig picks this agent up on its next sync after the merge. Choose **${def.name}** in the agent list of a session to use it.`,
+    "",
+  ]
+    .filter((line, i, all) => !(line === "" && all[i - 1] === ""))
+    .join("\n");
 }
 
 function stageSkill(app: AppContext, name: string) {

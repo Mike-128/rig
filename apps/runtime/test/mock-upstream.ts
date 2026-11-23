@@ -81,6 +81,16 @@ export function chooseTool(messages: { role: string; content: unknown }[], tools
     };
   }
   if (names.has("load_skill") && /skill/i.test(text)) return { name: "load_skill", args: { name: "agent-design" } };
+  if (names.has("document_create") && /\bword doc/i.test(text)) {
+    return {
+      name: "document_create",
+      args: {
+        filename: "Chicken Parmesan",
+        format: "docx",
+        content: "# Chicken Parmesan\n\n**Serves 4.** From *the test kitchen*.\n\n## Ingredients\n\n- 2 chicken breasts\n- 1 cup marinara\n\n## Steps\n\n1. Bread the chicken.\n2. Bake until golden.\n\n| Item | Amount |\n|---|---|\n| Mozzarella | 1 cup |\n",
+      },
+    };
+  }
   if (names.has("file_read") && /read/i.test(text)) return { name: "file_read", args: { path: "hello.txt" } };
   if (names.has("file_edit") && /\bedit\b/i.test(text)) return { name: "file_edit", args: { path: "hello.txt", old_string: "hello", new_string: "hello, edited" } };
   if (names.has("shell") && /\brun\b/i.test(text)) return { name: "shell", args: { command: "echo running tests && echo all 12 tests passed" } };

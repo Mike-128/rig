@@ -83,7 +83,7 @@ export async function probeModel(app: AppContext, conn: Connection, model: Model
   const r = await adapter.probe(adapterConnection(app, conn, model), model);
   const at = nowIso();
   const msg = r.message ? `${briefMessage(r.message)} (${r.latencyMs} ms)` : `${r.latencyMs} ms`;
-  app.models.setStatus(model.id, r.status, msg, at);
+  app.models.setStatus(model.id, r.status, msg, at, r.httpStatus);
   return app.models.get(model.id)!;
 }
 
@@ -108,7 +108,7 @@ export async function probeConnection(app: AppContext, conn: Connection, opts: {
 const NON_CHAT = /embed|transcribe|translate|tts|audio|speech|image|imagen|veo|whisper|rerank|moderation/i;
 
 /** Preview and experimental models usually carry much tighter quota, so they make a poor default. */
-const PREVIEW = /preview|experimental|-exp|-exp-/i;
+const PREVIEW = /preview|experimental|-exp\b|-exp-/i;
 
 /**
  * Bind the "default" alias if it is unset, so the seeded agents work as soon as a key is added.

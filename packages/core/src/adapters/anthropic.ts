@@ -1,9 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Block, CanonicalRequest, RigError, Message, Model, StopReason, StreamEvent, Usage } from "../types";
 import type { AdapterConnection, ProviderAdapter } from "./types";
-import { cancelledError, errorFromStatus, isAbortError, networkError } from "./errors";
+import { apiError, cancelledError, connectionFailure, isAbortError } from "./errors";
 import type { ProbeResult } from "../gateway/probe";
-import { classifyProbeError } from "../gateway/probe";
+import { classifyProbeError, probeShapeProblem } from "../gateway/probe";
 
 function makeClient(conn: AdapterConnection): Anthropic {
   return new Anthropic({
@@ -152,14 +152,16 @@ export const anthropicAdapter: ProviderAdapter = {
     const client = makeClient({ ...conn, maxRetries: 0, timeoutMs: 30_000 });
     const t0 = Date.now();
     try {
-      await client.messages.create(
-        { model: conn.modelId, max_tokens: 5, messages: [{ role: "user", content: "hi" }] },
-        { signal },
-      );
-      return { status: "entitled", latencyMs: Date.now() - t0 };
+      const { data, response } = await client.messages
+        .create({ model: conn.modelId, max_tokens: 5, messages: [{ role: "user", content: "hi" }] }, { signal })
+        .withResponse();
+      const latencyMs = Date.now() - t0;
+      const problem = probeShapeProblem("anthropic.messages", data);
+      if (problem) return { status: "unknown", message: problem, httpStatus: response.status, latencyMs };
+      return { status: "entitled", httpStatus: response.status, latencyMs };
     } catch (err) {
       const e = anthropicAdapter.normalizeError(err);
-      return { status: classifyProbeError(e), message: e.message, latencyMs: Date.now() - t0 };
+      return { status: classifyProbeError(e), message: e.message, httpStatus: e.status, latencyMs: Date.now() - t0 };
     }
   },
 
@@ -172,8 +174,8 @@ export const anthropicAdapter: ProviderAdapter = {
 
   normalizeError(err: unknown): RigError {
     if (isAbortError(err)) return cancelledError();
-    if (err instanceof Anthropic.APIConnectionError) return networkError(err.message);
-    if (err instanceof Anthropic.APIError) return errorFromStatus(err.status, err.message);
+    if (err instanceof Anthropic.APIConnectionError) return connectionFailure(err);
+    if (err instanceof Anthropic.APIError) return apiError(err);
     return { kind: "unknown", message: err instanceof Error ? err.message : String(err), retryable: false };
   },
 };

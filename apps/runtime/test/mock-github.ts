@@ -37,6 +37,8 @@ export interface MockGitHub {
   review(n: number, login: string, state: "APPROVED" | "CHANGES_REQUESTED"): void;
   /** Merges as GitHub does: the PR's changes applied onto the current base branch. */
   merge(n: number): void;
+  /** A commit straight onto a branch, as an older client or a person editing on GitHub would make. */
+  commit(files: Record<string, string>, branch?: string): void;
   setProtected(v: boolean): void;
   close(): Promise<void>;
 }
@@ -190,6 +192,12 @@ export async function startMockGitHub(opts: { tokens: Record<string, string>; ow
       pulls[n - 1].reviews.push({ user: { login }, state });
     },
     merge: mergePull,
+    commit(files, branch = "main") {
+      const tree = { ...treeOf(branch) };
+      for (const [p, text] of Object.entries(files)) tree[p] = putBlob(Buffer.from(text));
+      const parent = refs.get(branch);
+      refs.set(branch, putCommit({ tree: putTree(tree), parents: parent ? [parent] : [], message: "Direct commit" }));
+    },
     setProtected(v) {
       isProtected = v;
     },

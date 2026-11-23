@@ -29,6 +29,7 @@ export interface Settings {
 /** What a probe result means, in the words the UI uses everywhere. */
 export const STATUS_LABEL: Record<string, string> = {
   entitled: "Reachable",
+  rejected: "Request rejected",
   unauthorized: "Key rejected",
   forbidden: "Not allowed",
   not_found: "Not found",
@@ -40,7 +41,8 @@ export const STATUS_LABEL: Record<string, string> = {
 };
 
 export const STATUS_HELP: Record<string, string> = {
-  entitled: "The provider accepted the key for this model. A request rejected only for validation counts too, so send a chat before relying on it.",
+  entitled: "The provider answered the test request successfully.",
+  rejected: "The provider was reached but rejected the test request (HTTP 4xx). A gateway that needs an extra header, such as a charge code, or a different request body answers this way. Read the message.",
   unauthorized: "The provider rejected the key (401). Check the key, and the header it is sent in.",
   forbidden: "The key is valid but not allowed to use this model (403).",
   not_found: "The route or model id was not found (404). Check the base URL and the model id.",
@@ -50,6 +52,14 @@ export const STATUS_HELP: Record<string, string> = {
   unprobed: "Not tested yet. It may still work.",
   missing: "The default points at a model that no longer exists.",
 };
+
+/**
+ * The result to show for a model's last test. A request rejected only for validation still counts
+ * as entitled for routing, but it is shown as rejected so a missing header is not mistaken for success.
+ */
+export function testResult(m: { status: string; statusCode?: number }): string {
+  return m.status === "entitled" && m.statusCode !== undefined && m.statusCode >= 400 ? "rejected" : m.status;
+}
 
 /** Ask every open view to reload setup state, e.g. after a model or the default changes. */
 export const announceSetupChange = () => window.dispatchEvent(new Event("rig:setup"));
