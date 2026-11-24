@@ -188,9 +188,9 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
     if (!editing) return;
     setMsg(null);
     try {
-      const res = await api<{ ok: boolean; issues: ValidationIssue[] }>(`/team/agents/${editing}`, { method: "PUT", json: toInput(form) });
+      const res = await api<{ ok: boolean; issues: ValidationIssue[]; notices?: string[] }>(`/team/agents/${editing}`, { method: "PUT", json: toInput(form) });
       setIssues(res.issues);
-      setMsg("Proposed to the team. Open the pull request in Settings, Team and GitHub.");
+      setMsg(`Proposed to the team. Open the pull request in Settings, Team and GitHub.${res.notices?.length ? ` ${res.notices.join(" ")}` : ""}`);
     } catch (e) {
       const err = e as { body?: { issues?: ValidationIssue[] }; message: string };
       setIssues(err.body?.issues ?? [{ path: "", message: err.message, severity: "error" }]);
@@ -201,8 +201,8 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
     if (!editing) return;
     setMsg(null);
     try {
-      const r = await api<{ staged: { kind: string; name: string }[] }>("/team/share", { method: "POST", json: { kind: "agent", name: editing } });
-      setMsg(`Queued for the team: ${r.staged.map((s) => `${s.kind} ${s.name}`).join(", ")}. Open the pull request in Settings, Team and GitHub.`);
+      const r = await api<{ staged: { kind: string; name: string }[]; notices?: string[] }>("/team/share", { method: "POST", json: { kind: "agent", name: editing } });
+      setMsg(`Queued for the team: ${r.staged.map((s) => `${s.kind} ${s.name}`).join(", ")}. Open the pull request in Settings, Team and GitHub.${r.notices?.length ? ` ${r.notices.join(" ")}` : ""}`);
     } catch (e) {
       setIssues([{ path: "", message: (e as Error).message, severity: "error" }]);
     }

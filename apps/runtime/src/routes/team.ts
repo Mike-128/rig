@@ -110,7 +110,7 @@ export function teamRoutes(app: AppContext): Hono {
       if (b.data.kind === "agent") {
         const def = app.agents.isLocal(b.data.name) ? app.agents.get(b.data.name) : undefined;
         if (!def) return c.json({ error: `No personal agent "${b.data.name}" to share.` }, 404);
-        return c.json({ staged: stageAgent(app, def) });
+        return c.json({ staged: stageAgent(app, def), notices: partnerNotices(app, def) });
       }
       return c.json({ staged: [stageSkill(app, b.data.name)] });
     } catch (e) {
@@ -125,7 +125,7 @@ export function teamRoutes(app: AppContext): Hono {
     const v = validateAgentDefinition({ ...body, slug: c.req.param("slug") }, { knownSkills: app.skills.names() });
     if (!v.ok || !v.definition) return c.json(v, 400);
     try {
-      return c.json({ ...v, staged: stageAgent(app, v.definition) });
+      return c.json({ ...v, staged: stageAgent(app, v.definition), notices: partnerNotices(app, v.definition) });
     } catch (e) {
       return c.json(fail(e), 400);
     }
@@ -188,6 +188,21 @@ function stageAgent(app: AppContext, def: AgentDefinition) {
   ];
 }
 
+/**
+ * Agents this one talks to that teammates will not have: neither in the team repo nor queued for
+ * it. Its conversations with them would fail for teammates, so the user is told before the merge.
+ */
+export function partnerNotices(app: AppContext, def: AgentDefinition): string[] {
+  if (!def.tools.includes("agent_message") || !def.talksTo?.length) return [];
+  const queued = new Set(app.team.pending().filter((p) => p.kind === "agent" && p.op === "upsert").map((p) => p.name));
+  const missing = def.talksTo.filter((s) => s !== def.slug && !app.agents.getTeam(s) && !queued.has(s));
+  if (!missing.length) return [];
+  const names = missing.map((s) => `"${app.agents.get(s)?.name ?? s}"`).join(", ");
+  return [
+    `${def.name} talks to ${names}, which ${missing.length === 1 ? "is" : "are"} not in the team repo. Share ${missing.length === 1 ? "it" : "them"} too, or teammates' ${def.name} cannot reach ${missing.length === 1 ? "it" : "them"}.`,
+  ];
+}
+
 /** The README in an agent's folder: what it is and what it needs, for people browsing the repo. */
 export function agentReadme(def: AgentDefinition, brought: string[]): string {
   const model = "alias" in def.model ? `the \`${def.model.alias}\` alias, which each person maps to a model in Settings › Models` : "a specific model";
@@ -206,6 +221,7 @@ export function agentReadme(def: AgentDefinition, brought: string[]): string {
     `| Tools | ${list(def.tools)} |`,
     `| Needs approval | ${list(def.approvals)} |`,
     `| Skills | ${def.skills.includes("*") ? "every available skill" : list(skills)} |`,
+    ...(def.tools.includes("agent_message") ? [`| Talks to | ${def.talksTo?.length ? list(def.talksTo) : "any agent the person has"} |`] : []),
     "",
     "## Files",
     "",

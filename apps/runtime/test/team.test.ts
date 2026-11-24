@@ -229,6 +229,44 @@ describe("a shared team repo", () => {
     expect(system).toContain("gateway-needs-apim-header [team gotcha, bob_acme]");
   });
 
+  it("shares agents that talk to each other, and a teammate holds the conversation on their own runtime", async () => {
+    await asAlice("/agents/scout", { method: "PUT", json: { name: "Scout", slug: "scout", description: "Finds sources", model: { alias: "default" }, instructions: "Research.", tools: ["file_read"] } });
+    await asAlice("/agents/planner", {
+      method: "PUT",
+      json: { name: "Planner", slug: "planner", model: { alias: "default" }, instructions: "Plan with Scout.", tools: ["agent_message"], talksTo: ["scout"] },
+    });
+
+    // Sharing the planner alone says its partner would be missing for teammates.
+    const first = await asAlice<{ notices: string[] }>("/team/share", { method: "POST", json: { kind: "agent", name: "planner" } });
+    expect(first.notices).toEqual(['Planner talks to "Scout", which is not in the team repo. Share it too, or teammates\' Planner cannot reach it.']);
+    await asAlice("/team/share", { method: "POST", json: { kind: "agent", name: "scout" } });
+    expect((await asAlice<{ notices: string[] }>("/team/share", { method: "POST", json: { kind: "agent", name: "planner" } })).notices).toEqual([]);
+
+    const { pullRequest } = await asAlice<{ pullRequest: { number: number; branch: string } }>("/team/pull-request", { method: "POST", json: {} });
+    const proposed = gh.files(pullRequest.branch);
+    expect(proposed["agents/planner/agent.yaml"]).toMatch(/tools:\n {2}- agent_message\n/);
+    expect(proposed["agents/planner/agent.yaml"]).toMatch(/talksTo:\n {2}- scout\n/);
+    expect(proposed["agents/planner/README.md"]).toContain("| Talks to | `scout` |");
+    expect(proposed["agents/scout/agent.yaml"]).toBeDefined();
+    gh.merge(pullRequest.number);
+
+    // Bob gets both from the repo, with the partner list intact, and the conversation runs on his runtime.
+    await asBob("/team/sync", { method: "POST" });
+    expect(await asBob<{ talksTo?: string[]; tools: string[] }>("/agents/planner")).toMatchObject({ talksTo: ["scout"], tools: ["agent_message"] });
+    expect((await asBob<AgentSummary[]>("/agents")).filter((x) => ["planner", "scout"].includes(x.slug)).map((x) => x.source)).toEqual(["team", "team"]);
+    const session = await asBob<Session>("/sessions", { method: "POST", json: { agent: "planner" } });
+    const run = await asBob<{ id: string }>(`/sessions/${session.id}/runs`, { method: "POST", json: { input: "ask scout: what changed this quarter?" } });
+    expect((await waitForRun(asBob, run.id)).status).toBe("completed");
+    const view = await asBob<{ events: RunEvent[]; conversations: { id: string; agentSlug: string }[] }>(`/sessions/${session.id}`);
+    const reply = view.events.find((e) => e.type === "tool_result") as Extract<RunEvent, { type: "tool_result" }>;
+    expect(reply).toMatchObject({ name: "agent_message", isError: false });
+    expect(reply.output).toMatch(/^Scout replied \(conversation sess_/);
+    expect(view.conversations.map((c) => c.agentSlug)).toEqual(["scout"]);
+
+    // Conversations stay on the runtime that held them; the repo only ever gets definitions.
+    expect(Object.keys(gh.files()).some((f) => f.includes(view.conversations[0].id) || f.startsWith("sessions"))).toBe(false);
+  });
+
   it("only ever writes agents, skills, and memory into the repo", async () => {
     await expect(asAlice("/memory/team/big-report", { method: "PUT", json: { description: "A report", type: "reference", body: "x".repeat(9000) } })).rejects.toThrow(/short notes/);
     const files = Object.keys(gh.files());
