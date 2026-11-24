@@ -1,3 +1,5 @@
+import { describeHtmlError } from "../adapters/errors";
+
 /**
  * Turns a model test's raw outcome (status, HTTP code, provider message) into what actually
  * happened and what to do about it. Pure, so the web UI and the CLI can both use it.
@@ -75,7 +77,11 @@ export function parseTestMessage(raw: string | undefined): { said?: string; late
   }
   if (!text) return { latencyMs };
   // SDK errors read "400 {json}" or "400 message"; keep the message.
+  const status = text.match(/^(\d{3})\s/)?.[1];
   text = text.replace(/^\d{3}\s+/, "");
+  // A web page from a firewall or proxy: its headline and reference, not its markup.
+  const page = describeHtmlError(status ? Number(status) : undefined, text);
+  if (page) return { said: page, latencyMs };
   const json = text.indexOf("{");
   if (json >= 0) {
     try {
@@ -192,6 +198,14 @@ export function explainTestResult(t: TestOutcome, ctx: TestContext = {}): TestEx
     case code === 402:
       return { ...base, tone: "bad", meaning: "The account behind this key has no credit or billing set up.", action: "Check billing with the provider or the gateway administrator." };
     case code === 403:
+      if (has(said, /firewall in front of the provider blocked/i)) {
+        return {
+          ...base,
+          tone: "bad",
+          meaning: "A firewall in front of the gateway blocked the request before it reached the model. Firewalls like this inspect what a request contains, so a short test can pass while a chat (which also sends the agent's instructions, tools, and conversation) is blocked.",
+          action: "Give the reference to whoever runs the gateway and ask which firewall rule matched and why.",
+        };
+      }
       if (has(said, /\b(ip|ip address|network|firewall|location|region|country)\b/i)) return { ...base, tone: "bad", meaning: "The gateway refused the request because of where it came from (network, IP address, or region).", action: "Connect to the network the gateway allows, such as the company VPN." };
       return { ...base, tone: "bad", meaning: "The key is valid, but it is not allowed to use this model or route.", action: "Ask the gateway administrator to grant your subscription access to this model, or pick a model you have access to." };
     case code === 404:
