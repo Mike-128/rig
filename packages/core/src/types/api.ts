@@ -1,7 +1,15 @@
 import type { RunStatus } from "./events";
 import type { Usage } from "./canonical";
 
-export type SessionKind = "chat" | "project" | "task";
+/** conversation: a saved exchange between two agents, started by agent_message from another session. */
+export type SessionKind = "chat" | "project" | "task" | "conversation";
+
+/** For a conversation session: the session and agent that started it, and whose messages it holds. */
+export interface SessionParent {
+  sessionId: string;
+  agentSlug: string;
+  agentName: string;
+}
 
 /**
  * How much the user wants to be asked, chosen per session and changeable mid-run.
@@ -23,6 +31,8 @@ export interface Session {
   mode: PermissionMode;
   /** "Always allow" rules recorded during this session, e.g. "file_edit" or "shell:npm test". */
   allowRules: string[];
+  /** Set on a conversation between agents: who started it, from which session. */
+  parent?: SessionParent;
   createdAt: string;
   updatedAt: string;
 }

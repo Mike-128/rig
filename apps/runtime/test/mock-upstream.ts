@@ -58,6 +58,11 @@ export function chooseTool(messages: { role: string; content: unknown }[], tools
     }),
   );
   const text = lastUserText(messages);
+  // "ask <agent>: <message>" starts a conversation; "reply to <id>: <message>" continues one.
+  const ask = names.has("agent_message") ? text.match(/\bask ([a-z0-9-]+):\s*([\s\S]+)/i) : null;
+  if (ask) return { name: "agent_message", args: { agent: ask[1], message: ask[2].trim() } };
+  const reply = names.has("agent_message") ? text.match(/\breply to (sess_[A-Za-z0-9]+):\s*([\s\S]+)/i) : null;
+  if (reply) return { name: "agent_message", args: { conversation: reply[1], message: reply[2].trim() } };
   if (names.has("knowledge_read") && /knowledge/i.test(text)) return { name: "knowledge_read", args: { source: "reference", path: "nested/guide.md" } };
   if (names.has("memory_write") && /\bremember for the team\b/i.test(text)) {
     return {

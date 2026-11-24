@@ -13,6 +13,7 @@ const FIELD_ORDER: (keyof AgentDefinition)[] = [
   "skills",
   "knowledge",
   "memory",
+  "talksTo",
   "sandbox",
   "approvals",
   "budget",

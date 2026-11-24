@@ -10,6 +10,15 @@ export interface SubagentRequest {
   agent?: string;
 }
 
+export interface ConversationRequest {
+  /** Slug of the agent to start a conversation with. */
+  agent?: string;
+  /** Id of an existing conversation to continue. */
+  conversation?: string;
+  /** What to say. */
+  message: string;
+}
+
 export interface ToolContext {
   workspace: string;
   sandbox: 0 | 1;
@@ -22,6 +31,8 @@ export interface ToolContext {
   onProgress?: (text: string) => void;
   /** Runs a sub-agent to completion and returns its final answer. Absent when nesting is not allowed. */
   runSubagent?: (req: SubagentRequest, ctx: { signal: AbortSignal; onProgress?: (text: string) => void }) => Promise<ToolResult>;
+  /** Sends a message to another agent in a saved conversation and returns its reply. */
+  messageAgent?: (req: ConversationRequest, ctx: { signal: AbortSignal; onProgress?: (text: string) => void }) => Promise<ToolResult>;
 }
 
 export interface ToolResult {

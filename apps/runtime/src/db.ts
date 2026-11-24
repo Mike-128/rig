@@ -103,8 +103,10 @@ function migrate(db: Db): void {
   if (!has("sessions", "mode")) db.exec("ALTER TABLE sessions ADD COLUMN mode TEXT NOT NULL DEFAULT 'default'");
   if (!has("models", "status_code")) db.exec("ALTER TABLE models ADD COLUMN status_code INTEGER");
   if (!has("sessions", "allow_rules")) db.exec("ALTER TABLE sessions ADD COLUMN allow_rules TEXT NOT NULL DEFAULT '[]'");
+  // A conversation between agents records who started it: { sessionId, agentSlug, agentName }.
+  if (!has("sessions", "parent")) db.exec("ALTER TABLE sessions ADD COLUMN parent TEXT");
   // Project sessions were stored under an earlier kind name.
-  db.exec("UPDATE sessions SET kind = 'project' WHERE kind NOT IN ('chat', 'project', 'task')");
+  db.exec("UPDATE sessions SET kind = 'project' WHERE kind NOT IN ('chat', 'project', 'task', 'conversation')");
 }
 
 export function nowIso(): string {

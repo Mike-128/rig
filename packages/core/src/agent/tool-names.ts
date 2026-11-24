@@ -12,6 +12,7 @@ export const AGENT_TOOL_NAMES = [
   "document_create",
   "todo_write",
   "task",
+  "agent_message",
   "load_skill",
   "memory_read",
   "memory_write",

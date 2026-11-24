@@ -16,7 +16,7 @@ export function agentRoutes(app: AppContext): Hono {
     } catch (e) { return c.json({ error: (e as Error).message }, 400); }
   });
 
-  r.post("/validate", async (c) => c.json(validateAgentDefinition(await c.req.json(), { knownSkills: app.skills.names() })));
+  r.post("/validate", async (c) => c.json(validateAgentDefinition(await c.req.json(), { knownSkills: app.skills.names(), knownAgents: app.agents.list().map((a) => a.slug) })));
 
   r.post("/import", async (c) => {
     const text = await c.req.text();
@@ -26,7 +26,7 @@ export function agentRoutes(app: AppContext): Hono {
     } catch (e) {
       return c.json({ ok: false, issues: [{ path: "", message: `YAML parse error: ${(e as Error).message}`, severity: "error" }] }, 400);
     }
-    const res = app.agents.save(parsed, { knownSkills: app.skills.names() });
+    const res = app.agents.save(parsed, { knownSkills: app.skills.names(), knownAgents: app.agents.list().map((a) => a.slug) });
     return c.json(res, res.ok ? 200 : 400);
   });
 
@@ -46,7 +46,7 @@ export function agentRoutes(app: AppContext): Hono {
   r.put("/:slug", async (c) => {
     const body = (await c.req.json()) as Record<string, unknown>;
     body.slug = c.req.param("slug");
-    const res = app.agents.save(body, { knownSkills: app.skills.names() });
+    const res = app.agents.save(body, { knownSkills: app.skills.names(), knownAgents: app.agents.list().map((a) => a.slug) });
     return c.json(res, res.ok ? 200 : 400);
   });
 

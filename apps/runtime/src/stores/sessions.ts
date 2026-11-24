@@ -1,4 +1,4 @@
-import type { PermissionMode, Run, RunEvent, RunEventBody, RunStatus, Session, SessionKind, Usage } from "@rig/core";
+import type { PermissionMode, Run, RunEvent, RunEventBody, RunStatus, Session, SessionKind, SessionParent, Usage } from "@rig/core";
 import { json, nowIso, type Db } from "../db";
 
 interface SessionRow {
@@ -10,6 +10,7 @@ interface SessionRow {
   title: string;
   mode: string;
   allow_rules: string;
+  parent: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -44,6 +45,7 @@ const toSession = (r: SessionRow): Session => ({
   title: r.title,
   mode: (r.mode || "default") as PermissionMode,
   allowRules: json<string[]>(r.allow_rules, []),
+  ...(r.parent ? { parent: json<SessionParent | undefined>(r.parent, undefined) } : {}),
   createdAt: r.created_at,
   updatedAt: r.updated_at,
 });
@@ -72,8 +74,16 @@ export class SessionStore {
   constructor(private db: Db) {}
 
   // sessions
+  /** Sessions the user started. Conversations between agents are reached from the session that started them. */
   listSessions(limit = 100): Session[] {
-    return (this.db.prepare("SELECT * FROM sessions ORDER BY updated_at DESC LIMIT ?").all(limit) as unknown as SessionRow[]).map(toSession);
+    return (this.db.prepare("SELECT * FROM sessions WHERE kind != 'conversation' ORDER BY updated_at DESC LIMIT ?").all(limit) as unknown as SessionRow[]).map(toSession);
+  }
+
+  /** Conversations an agent in this session started with other agents, oldest first. */
+  conversationsOf(sessionId: string): Session[] {
+    return (
+      this.db.prepare("SELECT * FROM sessions WHERE kind = 'conversation' AND json_extract(parent, '$.sessionId') = ? ORDER BY created_at").all(sessionId) as unknown as SessionRow[]
+    ).map(toSession);
   }
 
   getSession(id: string): Session | undefined {
@@ -85,9 +95,9 @@ export class SessionStore {
     const t = nowIso();
     this.db
       .prepare(
-        "INSERT INTO sessions (id, kind, agent_slug, agent_version, workspace, title, mode, allow_rules, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO sessions (id, kind, agent_slug, agent_version, workspace, title, mode, allow_rules, parent, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
       )
-      .run(s.id, s.kind, s.agentSlug, s.agentVersion, s.workspace, s.title, s.mode ?? "default", JSON.stringify(s.allowRules ?? []), t, t);
+      .run(s.id, s.kind, s.agentSlug, s.agentVersion, s.workspace, s.title, s.mode ?? "default", JSON.stringify(s.allowRules ?? []), s.parent ? JSON.stringify(s.parent) : null, t, t);
     return this.getSession(s.id)!;
   }
 
@@ -134,7 +144,9 @@ export class SessionStore {
     else this.db.prepare("UPDATE sessions SET updated_at = ? WHERE id = ?").run(nowIso(), id);
   }
 
+  /** Deletes a session together with the conversations its agents started, and theirs. */
   deleteSession(id: string): void {
+    for (const c of this.conversationsOf(id)) this.deleteSession(c.id);
     this.db.prepare("DELETE FROM events WHERE session_id = ?").run(id);
     this.db.prepare("DELETE FROM runs WHERE session_id = ?").run(id);
     this.db.prepare("DELETE FROM sessions WHERE id = ?").run(id);

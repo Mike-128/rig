@@ -3,7 +3,7 @@ import { fileReadTool } from "./builtin/file_read";
 import { fileWriteTool } from "./builtin/file_write";
 import { fileEditTool } from "./builtin/file_edit";
 import { globTool, grepTool } from "./builtin/search";
-import { taskTool, todoWriteTool } from "./builtin/agentic";
+import { agentMessageTool, taskTool, todoWriteTool } from "./builtin/agentic";
 import { memoryReadTool, memoryWriteTool } from "./builtin/memory";
 import { shellTool } from "./builtin/shell";
 import { webFetchTool } from "./builtin/web_fetch";
@@ -26,6 +26,7 @@ export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolSpec> = {
   document_create: documentCreateTool,
   todo_write: todoWriteTool,
   task: taskTool,
+  agent_message: agentMessageTool,
   load_skill: loadSkillTool,
   memory_read: memoryReadTool,
   memory_write: memoryWriteTool,

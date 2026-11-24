@@ -13,6 +13,10 @@ interface SessionDetail {
   session: Session;
   runs: { id: string; status: string }[];
   events: RunEvent[];
+  /** Conversations this session's agents started with other agents. */
+  conversations?: { id: string; agentSlug: string; title: string }[];
+  /** For a conversation: the title of the session it came from. */
+  parentTitle?: string;
 }
 
 const MODES: PermissionMode[] = ["default", "acceptEdits", "plan", "auto"];
@@ -33,6 +37,7 @@ export function SessionsPage({ sessionId, home, ready }: { sessionId?: string; h
   const [agents, setAgents] = useState<AgentSummary[]>([]);
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [session, setSession] = useState<Session | null>(null);
+  const [parentTitle, setParentTitle] = useState<string | undefined>(undefined);
   const [thread, setThread] = useState<ThreadState>(emptyThread());
   const [steering, setSteering] = useState<string[]>([]);
   const [dialog, setDialog] = useState<null | { folder?: string }>(null);
@@ -49,8 +54,12 @@ export function SessionsPage({ sessionId, home, ready }: { sessionId?: string; h
 
   useEffect(() => {
     refreshSessions();
-    api<AgentSummary[]>("/agents").then(setAgents).catch(() => {});
   }, [refreshSessions]);
+
+  // Fetched per session, so agents saved since the page loaded (and their names) are known.
+  useEffect(() => {
+    api<AgentSummary[]>("/agents").then(setAgents).catch(() => {});
+  }, [sessionId]);
 
   // Skills visible from this folder: project skills included, so /commands match what the agent sees.
   useEffect(() => {
@@ -75,6 +84,7 @@ export function SessionsPage({ sessionId, home, ready }: { sessionId?: string; h
       .then((d) => {
         if (cancelled) return;
         setSession(d.session);
+        setParentTitle(d.parentTitle);
         const state = reduceAll(d.events);
         const open = d.runs.find((r) => ["running", "awaiting_approval", "queued"].includes(r.status));
         state.status = open ? (open.status === "awaiting_approval" ? "awaiting_approval" : "running") : "idle";
@@ -300,17 +310,34 @@ export function SessionsPage({ sessionId, home, ready }: { sessionId?: string; h
                   </button>
                 )}
               </div>
-              <select className="agent" value={session.agentSlug} onChange={(e) => patch({ agent: e.target.value })} title="Agent for this session">
-                {agents.map((a) => (
-                  <option key={a.slug} value={a.slug}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
-              <button className={`mode mode-${session.mode}`} onClick={cycleMode} title={`${MODE_HELP[session.mode]} (Shift+Tab to cycle)`}>
-                {MODE_LABEL[session.mode]}
-              </button>
+              {session.parent ? (
+                <span className="pill">{agents.find((a) => a.slug === session.agentSlug)?.name ?? session.agentSlug}</span>
+              ) : (
+                <>
+                  <select className="agent" value={session.agentSlug} onChange={(e) => patch({ agent: e.target.value })} title="Agent for this session">
+                    {agents.map((a) => (
+                      <option key={a.slug} value={a.slug}>
+                        {a.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button className={`mode mode-${session.mode}`} onClick={cycleMode} title={`${MODE_HELP[session.mode]} (Shift+Tab to cycle)`}>
+                    {MODE_LABEL[session.mode]}
+                  </button>
+                </>
+              )}
             </header>
+            {session.parent && (
+              <div className="conversation-banner">
+                <span>
+                  A conversation between <b>{session.parent.agentName}</b> and <b>{agents.find((a) => a.slug === session.agentSlug)?.name ?? session.agentSlug}</b>. The
+                  messages on the right come from {session.parent.agentName}. To join in, talk to {session.parent.agentName} in the session it came from.
+                </span>
+                <a className="btn" href={`#/s/${session.parent.sessionId}`}>
+                  Back to {parentTitle ?? "the session"}
+                </a>
+              </div>
+            )}
 
             <div
               className="thread"
@@ -326,7 +353,7 @@ export function SessionsPage({ sessionId, home, ready }: { sessionId?: string; h
                 </div>
               )}
               {thread.items.map((it) => (
-                <Item key={it.key} it={it} onDecide={decide} session={session} />
+                <Item key={it.key} it={it} onDecide={decide} session={session} from={session.parent?.agentName} />
               ))}
               {running && <LiveTurn thread={thread} />}
             </div>
@@ -353,7 +380,7 @@ export function SessionsPage({ sessionId, home, ready }: { sessionId?: string; h
                   {error}
                 </div>
               )}
-              <Composer
+              {!session.parent && <Composer
                 ref={composer}
                 sessionId={session.id}
                 running={running}
@@ -363,7 +390,7 @@ export function SessionsPage({ sessionId, home, ready }: { sessionId?: string; h
                 onSend={send}
                 onStop={stop}
                 onCycleMode={cycleMode}
-              />
+              />}
               <div className="statusline">
                 <span>{thread.model ?? session.agentSlug}</span>
                 <span title={`${thread.contextTokens.toLocaleString()} of ${contextWindow.toLocaleString()} tokens in the last request`} className={contextPct >= 70 ? "warn" : ""}>
@@ -399,11 +426,12 @@ export function SessionsPage({ sessionId, home, ready }: { sessionId?: string; h
   );
 }
 
-function Item({ it, onDecide, session }: { it: ThreadItem; onDecide: (t: ToolItem, d: ApprovalDecision) => void; session?: Pick<Session, "id" | "workspace"> }) {
+function Item({ it, onDecide, session, from }: { it: ThreadItem; onDecide: (t: ToolItem, d: ApprovalDecision) => void; session?: Pick<Session, "id" | "workspace">; from?: string }) {
   switch (it.kind) {
     case "user":
       return (
         <div className={`turn user ${it.steered ? "steered" : ""}`}>
+          {from && <span className="pill">from {from}</span>}
           {it.steered && <span className="pill">sent while working</span>}
           <div className="bubble">{it.display ?? it.text}</div>
         </div>
@@ -502,7 +530,7 @@ function ApprovalBar({ t, more, onDecide }: { t: ToolItem; more: number; onDecid
       }}
     >
       <div className="q">
-        Allow <b>{t.name}</b>
+        Allow {t.via && <><b>{t.via.agent}</b> to use </>}<b>{t.name}</b>
         {cmd && <code className="mono"> {cmd.length > 120 ? `${cmd.slice(0, 120)}…` : cmd}</code>}?{more > 0 && <span className="muted"> (+{more} more waiting)</span>}
       </div>
       <div className="row">
