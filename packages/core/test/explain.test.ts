@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { connectionFailure } from "../src/adapters/errors";
+import { apiError, connectionFailure } from "../src/adapters/errors";
 import { explainTestResult, httpLabel, parseTestMessage } from "../src/gateway/explain";
 
 const ctx = { authHeader: "Ocp-Apim-Subscription-Key", extraHeaders: [] as string[], url: "https://gateway.example/anthropic/v1/messages" };
@@ -81,5 +81,38 @@ describe("APIM's ambiguous 401", () => {
     const ex = explainTestResult({ status: "unauthorized", statusCode: 401, statusMessage: "401 Access denied due to missing or invalid subscription key. (20 ms)" }, { authHeader: "Authorization" })!;
     expect(ex.meaning).toBe("The gateway did not accept a key: either it is not where the gateway looks, or it is wrong. Rig sends the key in Authorization.");
     expect(ex.action).toMatch(/Ocp-Apim-Subscription-Key/);
+  });
+});
+
+// The shape of a firewall's block page (synthetic reference).
+const BLOCK_PAGE = `<!DOCTYPE html PUBLIC '-//W3C//DTD XHTML 1.0 Transitional//EN' 'http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd'><html xmlns='http://www.w3.org/1999/xhtml'><head><meta content='text/html; charset=utf-8' http-equiv='content-type' /><style type='text/css'>body { font-family: Arial; margin-left: 40px; } #message h2 { font-size: 20px; }</style><title>Service unavailable</title></head><body><div id='content'><div id='message'><h2>The request is blocked.</h2></div><div id='errorref'><span>20260101T120000Z-r0000000000example00000000000000000000</span></div></div></body></html>`;
+
+describe("web pages instead of API errors", () => {
+  it("names a firewall block, quotes its headline, and keeps the reference", () => {
+    const err = apiError({ status: 403, message: `403 ${BLOCK_PAGE}` });
+    expect(err.kind).toBe("forbidden");
+    expect(err.message).toBe(
+      'A firewall in front of the provider blocked this request (403); it did not reach the model. Its page says: "The request is blocked." Reference: 20260101T120000Z-r0000000000example00000000000000000000. Whoever runs the gateway can look this reference up in the firewall or gateway logs to see which rule matched.',
+    );
+    expect(err.message).not.toMatch(/<|font-family/);
+  });
+
+  it("prefers the reference header, and describes other pages without calling them a block", () => {
+    const headers = new Headers({ "x-azure-ref": "20260101T130000Z-r1111111111header111111111111" });
+    expect(apiError({ status: 403, message: `403 ${BLOCK_PAGE}`, headers }).message).toContain("Reference: 20260101T130000Z-r1111111111header111111111111.");
+    const bad = apiError({ status: 502, message: "502 <html><head><title>502 Bad Gateway</title></head><body><center><h1>502 Bad Gateway</h1></center></body></html>" });
+    expect(bad).toMatchObject({ kind: "server", retryable: true });
+    expect(bad.message).toBe('Something in front of the provider (a gateway, proxy, or firewall) answered (502) with a web page instead of an API error. Its page says: "502 Bad Gateway"');
+    // JSON errors are left alone.
+    expect(apiError({ status: 403, message: '403 {"error":{"message":"no access"}}' }).message).toBe('403 {"error":{"message":"no access"}}');
+  });
+
+  it("explains a blocked model test, including results saved with the raw page", () => {
+    const ex = explain("forbidden", 403, `403 ${BLOCK_PAGE} (85 ms)`);
+    expect(ex).toMatchObject({ tone: "bad", code: "HTTP 403 Forbidden", latencyMs: 85 });
+    expect(ex.meaning).toMatch(/^A firewall in front of the gateway blocked the request/);
+    expect(ex.action).toMatch(/which firewall rule matched/);
+    expect(ex.providerSaid).toMatch(/Reference: 20260101T120000Z-/);
+    expect(ex.providerSaid).not.toMatch(/</);
   });
 });

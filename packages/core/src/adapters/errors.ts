@@ -73,10 +73,62 @@ function proxyMessage(err: { message: string; error?: unknown }): string {
   return typeof inner === "string" ? inner : err.message.replace(/^\d{3}\s+/, "");
 }
 
+function header(headers: unknown, name: string): string | undefined {
+  if (!headers) return undefined;
+  const h = headers as { get?: (name: string) => string | null } & Record<string, unknown>;
+  const value = typeof h.get === "function" ? h.get(name) : h[name];
+  return typeof value === "string" && value ? value : undefined;
+}
+
+const HTML_PAGE = /<\s*(!doctype\s+html|html|head|body)\b/i;
+/** Azure Front Door's request reference, shown on its block page and sent as x-azure-ref. */
+const AZURE_REF = /\b\d{8}T\d{6}Z-[A-Za-z0-9]{12,}\b/;
+
+function pageText(fragment: string): string {
+  return fragment
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Some answers are web pages rather than API errors: a firewall, load balancer, or proxy in front
+ * of the provider answered instead of the provider. Say that plainly, quote the page's own
+ * headline instead of its markup, and keep any reference id the operators can look up.
+ */
+export function describeHtmlError(status: number | undefined, message: string, headers?: unknown): string | undefined {
+  if (!HTML_PAGE.test(message)) return undefined;
+  const pick = (re: RegExp) => {
+    const m = re.exec(message);
+    return m ? pageText(m[1]) : "";
+  };
+  const headline = pick(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/i) || pick(/<title[^>]*>([\s\S]*?)<\/title>/i) || pageText(message.replace(/<(style|script)[^>]*>[\s\S]*?<\/\1>/gi, " ")).replace(/^\d{3}\s+/, "").slice(0, 160);
+  const ref = header(headers, "x-azure-ref") ?? AZURE_REF.exec(message)?.[0] ?? header(headers, "x-request-id") ?? header(headers, "x-ms-request-id");
+  const code = status !== undefined ? ` (${status})` : "";
+  const quoted = headline ? ` Its page says: "${headline}"` : "";
+  const blocked = status === 403 && /block|denied|forbidden|firewall|reject/i.test(headline || message);
+  const lead = blocked
+    ? `A firewall in front of the provider blocked this request${code}; it did not reach the model.${quoted}`
+    : `Something in front of the provider (a gateway, proxy, or firewall) answered${code} with a web page instead of an API error.${quoted}`;
+  const tail = ref
+    ? ` Reference: ${ref}. Whoever runs the gateway can look this reference up in the firewall or gateway logs to see which rule matched.`
+    : blocked
+      ? " Ask whoever runs the gateway which firewall rule matched, and give them the time of the request."
+      : "";
+  return `${lead}${tail}`;
+}
+
 /** A provider error from the SDK, or Rig's own "could not connect" answer, as a RigError. */
 export function apiError(err: { status?: number; message: string; headers?: unknown; error?: unknown }): RigError {
   if (isProxyConnectionError(err.headers)) return networkError(proxyMessage(err));
-  return errorFromStatus(err.status, err.message);
+  const page = describeHtmlError(err.status, err.message, err.headers);
+  return errorFromStatus(err.status, page ?? err.message);
 }
 
 /**
