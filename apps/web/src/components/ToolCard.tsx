@@ -32,6 +32,8 @@ export function toolTitle(t: Pick<ToolItem, "name" | "input">): { verb: string; 
       return { verb: "Plan", target: "" };
     case "task":
       return { verb: "Sub-agent", target: str(i.description) };
+    case "agent_message":
+      return i.conversation ? { verb: "Reply", target: "in conversation" } : { verb: "Ask", target: str(i.agent) };
     case "load_skill":
       return { verb: "Skill", target: `${str(i.name)}${i.file ? ` › ${str(i.file)}` : ""}` };
     default:
@@ -44,6 +46,8 @@ function resultNote(t: ToolItem): string {
   if (t.status === "awaiting_approval") return "waiting for you";
   if (t.status === "running") return "running";
   if (t.approval?.decision === "deny") return "declined";
+  // Another agent's call: this card holds only the decision; its result is in that conversation.
+  if (t.via) return "allowed";
   const out = t.output ?? "";
   if (t.isError) {
     const exit = out.match(/\[exit code (\d+)\]\s*$/);
@@ -129,6 +133,58 @@ function DocumentCard({ path, size, session }: { path: string; size: string; ses
   );
 }
 
+/** Splits an agent_message result into who answered, the conversation, and the reply itself. */
+export function parseConversationResult(output: string | undefined): { agent?: string; conversation?: string; reply?: string } {
+  if (!output) return {};
+  const m = output.match(/^(.+?) (?:replied|could not answer) \(conversation (sess_[A-Za-z0-9]+)\)(?::|\s)/);
+  if (!m) return { conversation: output.match(/conversation "?(sess_[A-Za-z0-9]+)/)?.[1] };
+  const body = output.slice(m[0].length).replace(/\n*To reply, call agent_message with conversation "[^"]+"\.\s*$/, "").trim();
+  return { agent: m[1], conversation: m[2], reply: body };
+}
+
+/** One message to another agent and its reply, with a way into the whole conversation. */
+function ConversationCard({ t }: { t: ToolItem }) {
+  const i = (t.input ?? {}) as Record<string, unknown>;
+  const parsed = parseConversationResult(t.output);
+  const conversation = parsed.conversation ?? str(i.conversation);
+  const who = parsed.agent ?? (str(i.agent) || "the other agent");
+  const state = t.status !== "done" ? t.status : t.isError ? "error" : "ok";
+  const [open, setOpen] = useState<boolean | undefined>(undefined);
+  const expanded = open ?? (t.status !== "done" || t.isError === true);
+  return (
+    <div className={`tool conversation ${expanded ? "open" : ""}`}>
+      <button className="tool-head" onClick={() => setOpen(!expanded)} title={expanded ? "Collapse" : "Expand"}>
+        <span className={`dot ${state}`} />
+        <span className="verb">{i.conversation ? "Replied to" : "Asked"}</span>
+        <span className="target">{who}</span>
+        <span className="note">{t.status === "running" ? "waiting for its reply" : t.isError ? "no reply" : "replied"}</span>
+      </button>
+      {expanded && (
+        <div className="tool-body">
+          <div className="exchange">
+            <div className="said">
+              <span className="who">Message</span>
+              <div className="text">{str(i.message)}</div>
+            </div>
+            {t.status === "running" && t.progress && <LiveOutput text={t.progress} />}
+            {t.status === "done" && (
+              <div className={`said reply ${t.isError ? "err" : ""}`}>
+                <span className="who">{t.isError ? "Problem" : `${who} replied`}</span>
+                <div className="text">{parsed.reply ?? t.output}</div>
+              </div>
+            )}
+          </div>
+          {conversation && (
+            <a className="btn" href={`#/s/${conversation}`}>
+              Open the conversation
+            </a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ToolCard({ t, session }: { t: ToolItem; session?: Pick<Session, "id" | "workspace"> }) {
   const i = (t.input ?? {}) as Record<string, unknown>;
   const showsDiff = t.name === "file_edit" || t.name === "file_write";
@@ -148,6 +204,8 @@ export function ToolCard({ t, session }: { t: ToolItem; session?: Pick<Session, 
     );
   }
 
+  if (t.name === "agent_message") return <ConversationCard t={t} />;
+
   if (t.name === "todo_write") {
     const todos = (i.todos as { content: string; status: string }[] | undefined) ?? [];
     return (
@@ -165,6 +223,7 @@ export function ToolCard({ t, session }: { t: ToolItem; session?: Pick<Session, 
     <div className={`tool ${expanded ? "open" : ""}`}>
       <button className="tool-head" onClick={() => setOpen(!expanded)} title={expanded ? "Collapse" : "Expand"}>
         <span className={`dot ${state}`} />
+        {t.via && <span className="pill" title="Asked by another agent, in a conversation this session started">{t.via.agent}</span>}
         <span className="verb">{verb}</span>
         <span className="target mono">{target}</span>
         {note && <span className="note">{note}</span>}
@@ -176,6 +235,11 @@ export function ToolCard({ t, session }: { t: ToolItem; session?: Pick<Session, 
           {t.name === "file_write" && <DiffView before="" after={str(i.content).split("\n").slice(0, 400).join("\n")} />}
           {t.name === "task" && <pre className="output">{str(i.prompt)}</pre>}
           {t.status === "running" && t.progress && <LiveOutput text={t.progress} />}
+          {t.via && (
+            <p className="muted small">
+              {t.via.agent} is asking, in a conversation this session's agent started. <a href={`#/s/${t.via.conversation}`}>Open the conversation</a>
+            </p>
+          )}
           {t.output !== undefined && !(showsDiff && !t.isError) && <pre className={`output ${t.isError ? "err" : ""}`}>{t.output}</pre>}
           {!showsDiff && t.name !== "task" && t.output === undefined && !t.progress && t.status !== "running" && (
             <pre className="output muted">{JSON.stringify(t.input, null, 2)}</pre>

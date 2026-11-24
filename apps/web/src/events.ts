@@ -20,6 +20,8 @@ export interface ToolItem {
   progress: string;
   status: "awaiting_approval" | "running" | "done";
   approval?: { decision?: ApprovalDecision; rule?: string };
+  /** Set when another agent, in a conversation this session started, asked for this approval. */
+  via?: { agent: string; conversation: string };
 }
 
 export type ThreadItem =
@@ -148,11 +150,12 @@ export function reduceEvent(s: ThreadState, ev: RunEvent): ThreadState {
       break;
     }
     case "approval_requested":
-      upsertTool(items, ev.runId, ev.callId, tool(ev.callId, ev.name, ev.input), () => ({ status: "awaiting_approval", approval: {} }));
+      upsertTool(items, ev.runId, ev.callId, tool(ev.callId, ev.name, ev.input), () => ({ status: "awaiting_approval", approval: {}, ...(ev.via ? { via: ev.via } : {}) }));
       next.status = "awaiting_approval";
       break;
     case "approval_resolved":
-      upsertTool(items, ev.runId, ev.callId, tool(ev.callId, "", undefined), (t) => ({ status: ev.decision === "deny" ? "done" : t.status === "awaiting_approval" ? "running" : t.status, approval: { decision: ev.decision, rule: ev.rule } }));
+      // Another agent's call runs in its own conversation, so its card here ends with the decision.
+      upsertTool(items, ev.runId, ev.callId, tool(ev.callId, "", undefined), (t) => ({ status: ev.decision === "deny" || t.via ? "done" : t.status === "awaiting_approval" ? "running" : t.status, approval: { decision: ev.decision, rule: ev.rule } }));
       next.status = items.some((i) => i.kind === "tool" && i.status === "awaiting_approval") ? "awaiting_approval" : "running";
       break;
     case "tool_call":

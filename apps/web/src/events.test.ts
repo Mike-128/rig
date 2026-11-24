@@ -6,6 +6,18 @@ function event(body: RunEventBody, ms: number, runId = "run-one"): RunEvent {
   return { ...body, ts: new Date(ms).toISOString(), runId, sessionId: "session", id: ms };
 }
 const reply: RunEventBody = { type: "assistant_message", message: { role: "assistant", content: [{ type: "text", text: "Hello" }] }, stopReason: "end_turn" };
+describe("approvals another agent asks for", () => {
+  it("names the agent, and closes the card with the decision since the call runs in its conversation", () => {
+    const via = { agent: "Research", conversation: "sess_convo" };
+    const asked = reduceAll([event({ type: "approval_requested", callId: "run-two.call_1", name: "file_read", input: { path: "notes.md" }, via }, 1000)]);
+    expect(asked.status).toBe("awaiting_approval");
+    expect(asked.items[0]).toMatchObject({ kind: "tool", name: "file_read", status: "awaiting_approval", via });
+    const allowed = reduceEvent(asked, event({ type: "approval_resolved", callId: "run-two.call_1", decision: "approve" }, 1100));
+    expect(allowed.items[0]).toMatchObject({ status: "done", approval: { decision: "approve" } });
+    expect(allowed.status).toBe("running");
+  });
+});
+
 describe("chat response latency", () => {
   it("uses identical persisted timing during live delivery and replay", () => {
     const events = [event({ type: "turn_started", turn: 1 }, 1000), event(reply, 2234)];

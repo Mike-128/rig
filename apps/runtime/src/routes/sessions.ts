@@ -130,6 +130,7 @@ export function sessionRoutes(app: AppContext): Hono {
   r.post("/sessions/:id/compact", (c) => {
     const s = app.sessions.getSession(c.req.param("id"));
     if (!s) return c.json({ error: "not found" }, 404);
+    if (s.kind === "conversation") return c.json({ error: `This is a conversation between ${s.parent?.agentName ?? "two agents"} and another agent. Talk to ${s.parent?.agentName ?? "the agent that started it"} in the session it came from.` }, 409);
     if (app.runs.activeRunFor(s.id)) return c.json({ error: "wait for the current run to finish, or stop it" }, 409);
     const run = app.runs.submit(s, "", { compactOnly: true });
     return c.json(app.sessions.getRun(run.id) ?? run, 202);
@@ -179,7 +180,9 @@ export function sessionRoutes(app: AppContext): Hono {
     const s = app.sessions.getSession(c.req.param("id"));
     if (!s) return c.json({ error: "not found" }, 404);
     const events = app.sessions.sessionEvents(s.id);
-    return c.json({ session: s, runs: app.sessions.listRuns(s.id), events, messages: projectMessages(events) });
+    const conversations = app.sessions.conversationsOf(s.id).map((x) => ({ id: x.id, agentSlug: x.agentSlug, title: x.title, updatedAt: x.updatedAt }));
+    const parent = s.parent ? app.sessions.getSession(s.parent.sessionId) : undefined;
+    return c.json({ session: s, runs: app.sessions.listRuns(s.id), events, messages: projectMessages(events), conversations, parentTitle: parent?.title });
   });
 
   r.delete("/sessions/:id", (c) => {
@@ -190,6 +193,7 @@ export function sessionRoutes(app: AppContext): Hono {
   r.post("/sessions/:id/runs", async (c) => {
     const s = app.sessions.getSession(c.req.param("id"));
     if (!s) return c.json({ error: "not found" }, 404);
+    if (s.kind === "conversation") return c.json({ error: `This is a conversation between ${s.parent?.agentName ?? "two agents"} and another agent. Talk to ${s.parent?.agentName ?? "the agent that started it"} in the session it came from.` }, 409);
     const b = z.object({ input: z.string().min(1) }).safeParse(await c.req.json());
     if (!b.success) return c.json({ error: "input is required" }, 400);
     const turn = attachMentions(s, expandSlashSkill(app, s, b.data.input));
@@ -323,6 +327,8 @@ export function sessionRoutes(app: AppContext): Hono {
           while (queue.length) {
             const ev = queue.shift()!;
             const session = app.sessions.getSession(ev.sessionId);
+            // A conversation between agents asks for approvals in the user's own session, which reports them.
+            if (session?.kind === "conversation") continue;
             await stream.writeSSE({ event: ev.type, data: JSON.stringify({ ...ev, sessionTitle: session?.title, workspace: session?.workspace }) });
           }
         }

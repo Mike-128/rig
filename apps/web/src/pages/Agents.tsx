@@ -21,6 +21,7 @@ const TOOL_HELP: Record<string, string> = {
   file_write: "Create or overwrite files inside the workspace. Needs sandbox 1.",
   todo_write: "Keep a visible task list for multi-step work.",
   task: "Delegate work to sub-agents with their own context, in parallel if needed.",
+  agent_message: "Hold conversations with other agents: ask, answer their questions, and follow up. Each conversation is saved and keeps its history.",
   "mcp__*": "Every tool from every connected MCP server. Tools that are not read-only ask for approval.",
   web_fetch: "Fetch a public http(s) URL as text. Read-only.",
   document_create: "Create a Word document, web page, Markdown, or CSV file under outputs/ for the user to download. Never overwrites.",
@@ -47,6 +48,8 @@ interface Form {
   skills: string[];
   knowledge: { name: string; path: string; description: string }[];
   memory: boolean;
+  /** Agents this one may talk to; empty means any. */
+  talksTo: string[];
   approvals: string[];
   sandbox: 0 | 1;
   maxTurns: number;
@@ -70,6 +73,7 @@ const blank = (): Form => ({
   skills: [],
   knowledge: [],
   memory: false,
+  talksTo: [],
   approvals: [],
   sandbox: 1,
   maxTurns: 25,
@@ -91,6 +95,7 @@ function toInput(f: Form): AgentDefinitionInput {
     skills: f.skills,
     knowledge: f.knowledge.length ? f.knowledge : undefined,
     memory: f.memory || undefined,
+    talksTo: f.talksTo.length ? f.talksTo : undefined,
     sandbox: f.sandbox,
     approvals: f.approvals as AgentDefinitionInput["approvals"],
     budget: {
@@ -125,6 +130,7 @@ function fromDefinition(d: Record<string, unknown>): Form {
     skills: (d.skills as string[]) ?? [],
     knowledge: ((d.knowledge ?? []) as Form["knowledge"]).map((s) => ({ ...s, description: s.description ?? "" })),
     memory: d.memory === true,
+    talksTo: (d.talksTo as string[]) ?? [],
     approvals: (d.approvals as string[]) ?? [],
     sandbox: (d.sandbox as 0 | 1) ?? 1,
     maxTurns: budget.maxTurns ?? 25,
@@ -568,6 +574,41 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
                   </label>
                 ))}
               </div>
+            </div>
+            <div className="field">
+              <span className="muted">Other agents</span>
+              <div className="checks">
+                <label title={TOOL_HELP.agent_message}>
+                  <input
+                    type="checkbox"
+                    checked={form.tools.includes("agent_message")}
+                    onChange={() => toggle("tools", "agent_message")}
+                  />{" "}
+                  Talk to other agents (agent_message)
+                </label>
+              </div>
+              {form.tools.includes("agent_message") && (
+                <>
+                  <span className="hint">
+                    Which agents it can talk to. With none ticked, it can talk to any of them. Each conversation is saved, the other agent remembers it, and
+                    anything that agent needs approved is asked here, in this agent's session.
+                  </span>
+                  <div className="checks">
+                    {agents
+                      .filter((a) => a.slug !== form.slug)
+                      .map((a) => (
+                        <label key={a.slug} title={a.description}>
+                          <input
+                            type="checkbox"
+                            checked={form.talksTo.includes(a.slug)}
+                            onChange={() => setForm((f) => ({ ...f, talksTo: f.talksTo.includes(a.slug) ? f.talksTo.filter((s) => s !== a.slug) : [...f.talksTo, a.slug] }))}
+                          />{" "}
+                          {a.name}
+                        </label>
+                      ))}
+                  </div>
+                </>
+              )}
             </div>
             <div className="field">
               <span className="muted">MCP tools (servers are set up in Settings, MCP servers)</span>

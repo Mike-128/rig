@@ -15,6 +15,8 @@ export interface ValidationResult {
 export interface ValidateOptions {
   /** Skill names installed on this machine, so unknown ones can be reported. */
   knownSkills?: string[];
+  /** Slugs of the agents saved on this machine, so unknown conversation partners can be reported. */
+  knownAgents?: string[];
   /** Fill in a slug from the name when the caller omitted it (used by the agent_write tool). */
   deriveSlug?: boolean;
 }
@@ -77,6 +79,14 @@ export function validateAgentDefinition(input: unknown, opts: ValidateOptions = 
       if (s !== "*" && !opts.knownSkills.includes(s)) {
         issues.push({ path: "skills", message: `skill "${s}" is not installed on this machine`, severity: "warning" });
       }
+    }
+  }
+
+  if (def.talksTo?.length) {
+    if (!def.tools.includes("agent_message")) issues.push({ path: "talksTo", message: "Agents to talk to are listed, but agent_message is not enabled, so the agent cannot reach them", severity: "warning" });
+    if (def.talksTo.includes(def.slug)) issues.push({ path: "talksTo", message: "An agent cannot hold a conversation with itself", severity: "warning" });
+    for (const s of def.talksTo) {
+      if (opts.knownAgents && s !== def.slug && !opts.knownAgents.includes(s)) issues.push({ path: "talksTo", message: `agent "${s}" is not saved on this machine`, severity: "warning" });
     }
   }
 

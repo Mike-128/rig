@@ -120,7 +120,7 @@ If Git refuses a fast-forward, stop and inspect the branch/local commits rather 
 
 The seeded agents are **Coder** (software engineering in a project folder), **Assistant** (general chat), and **Agent Builder**. Create your own in **Agents**: instructions, model (an alias or an explicit model), tools, approvals, sandbox level, and budgets. Saving creates a versioned YAML file under `~/.rig/agents`.
 
-Tools: `file_read`, `glob`, `grep`, `file_edit`, `file_write`, `shell`, `web_fetch`, `document_create`, `todo_write`, `task` (sub-agents), `load_skill`, the rig management tools, and MCP tools. Read-only calls in one turn run in parallel. On Windows, `shell` uses Git Bash when it is installed, then PowerShell 7, then Windows PowerShell; set `RIG_SHELL` to choose.
+Tools: `file_read`, `glob`, `grep`, `file_edit`, `file_write`, `shell`, `web_fetch`, `document_create`, `todo_write`, `task` (sub-agents), `agent_message` (conversations with other agents), `load_skill`, the rig management tools, and MCP tools. Read-only calls in one turn run in parallel. On Windows, `shell` uses Git Bash when it is installed, then PowerShell 7, then Windows PowerShell; set `RIG_SHELL` to choose.
 
 `document_create` turns Markdown into a file the user downloads from the chat: a Word document (`.docx`), a web page, Markdown, or CSV. Files go to `outputs/` in the session's folder and are never overwritten; the chat shows a card with **Download** (and **Open** in the desktop app). The Assistant and Coder have it; add it to your own agents on the Agents page.
 

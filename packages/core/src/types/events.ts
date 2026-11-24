@@ -31,7 +31,14 @@ export type RunEventBody =
   | { type: "tool_progress"; callId: string; text: string; transient: true }
   | { type: "assistant_message"; message: Message; stopReason: StopReason }
   | { type: "tool_call"; callId: string; name: string; input: unknown }
-  | { type: "approval_requested"; callId: string; name: string; input: unknown }
+  | {
+      type: "approval_requested";
+      callId: string;
+      name: string;
+      input: unknown;
+      /** Set when another agent, in a conversation this run started, asks for the approval. */
+      via?: { agent: string; conversation: string };
+    }
   | { type: "approval_resolved"; callId: string; decision: ApprovalDecision; rule?: string }
   | { type: "tool_result"; callId: string; name: string; output: string; isError: boolean; durationMs: number }
   | { type: "tool_results_message"; message: Message }

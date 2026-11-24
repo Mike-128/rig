@@ -13,6 +13,7 @@ import {
   type AgentDefinition,
   type ApprovalDecision,
   type Connection,
+  type ConversationRequest,
   type Model,
   type PolicyEvaluator,
   type Run,
@@ -54,6 +55,19 @@ export interface ResolvedModel {
 
 export type BusKey = `session:${string}` | `run:${string}` | "all";
 
+/** How many agents deep a chain of conversations may go, counting the one the user talks to. */
+export const MAX_CONVERSATION_DEPTH = 3;
+
+/** Where an agent_message call comes from: the user's run at the top, and the agents waiting below it. */
+interface ConversationLink {
+  /** The run the user is watching; approvals are relayed to it. */
+  root: { run: Run; state: ActiveRun; session: Session };
+  /** Slugs of the agents waiting on this call, from the root down to the caller. */
+  chain: string[];
+  /** The calling agent and the session it is working in. */
+  caller: { session: Session; agent: AgentDefinition };
+}
+
 const SUBAGENT_INSTRUCTIONS = `You are a sub-agent: another agent has delegated one self-contained task to you. You cannot see its conversation and you cannot ask it or the user questions, so work from the task as written.
 
 Work efficiently: search broadly with glob and grep, read only what you need, and stop as soon as you can answer. When you finish, reply with a concise report of exactly what the task asked for: findings with file paths and line numbers, what you changed if you changed anything, and anything you could not determine. Your final message is all the other agent will see.`;
@@ -69,6 +83,8 @@ export class RunManager {
   private inbox = new Map<string, string[]>();
   private bus = new EventEmitter();
   private app!: AppContext;
+  /** Conversations with a message in flight; a second message waits for the reply. */
+  private conversing = new Set<string>();
 
   constructor(private maxConcurrent: number) {
     this.bus.setMaxListeners(500);
@@ -215,11 +231,13 @@ export class RunManager {
           env: environmentFacts(current.workspace),
           mode: current.mode,
           memories: this.app.memory.list(),
+          contacts: this.contactsFor(agent),
         },
         host: createHost(this.app, agent, current.workspace),
         takeSteering: () => this.takeInbox(session.id),
         onAllowRule: (rule) => sessions.addAllowRule(session.id, rule),
         runSubagent: (req, ctx) => this.runSubagent(run, current, agent, req, ctx),
+        messageAgent: (req, ctx) => this.converse({ root: { run, state, session: current }, chain: [agent.slug], caller: { session: current, agent } }, req, ctx),
         requestApproval: (callId) =>
           new Promise<ApprovalDecision>((resolve) => {
             state.approvals.set(callId, (d) => {
@@ -334,6 +352,179 @@ export class RunManager {
     }
     if (error) return { output: `Sub-agent stopped: ${error}${final ? `\n\nLast report:\n${final}` : ""}`, isError: true };
     return { output: final || "(the sub-agent finished without a report)" };
+  }
+
+  /** The agents an agent may talk to with agent_message: its talksTo list, or every other saved agent. */
+  private contactsFor(agent: AgentDefinition): { slug: string; name: string; description?: string }[] {
+    if (!agent.tools.includes("agent_message")) return [];
+    const all = this.app.agents.list().filter((a) => a.slug !== agent.slug);
+    const allowed = agent.talksTo?.length ? all.filter((a) => agent.talksTo!.includes(a.slug)) : all;
+    return allowed.map((a) => ({ slug: a.slug, name: a.name, description: a.description }));
+  }
+
+  /**
+   * One message in a conversation between agents: start or continue a saved conversation session,
+   * run the other agent on it with everything said so far, and return its reply. The other agent
+   * works in the caller's folder under the user's session mode and rules; anything it needs
+   * approved is asked of the user in the session they are watching.
+   */
+  private async converse(link: ConversationLink, req: ConversationRequest, ctx: { signal: AbortSignal; onProgress?: (text: string) => void }): Promise<ToolResult> {
+    const { sessions, agents } = this.app;
+    const { caller } = link;
+    const fail = (output: string): ToolResult => ({ output, isError: true });
+    const contacts = () => {
+      const list = this.contactsFor(caller.agent);
+      return list.length ? `You can talk to: ${list.map((c) => c.slug).join(", ")}.` : "There are no other agents to talk to.";
+    };
+
+    let convo: Session | undefined;
+    let callee: AgentDefinition | undefined;
+    if (req.conversation) {
+      convo = sessions.getSession(req.conversation);
+      if (!convo || convo.kind !== "conversation" || convo.parent?.sessionId !== caller.session.id) {
+        return fail(`There is no conversation "${req.conversation}" started from here. Start one by naming the agent.`);
+      }
+      if (req.agent && req.agent !== convo.agentSlug) return fail(`Conversation ${convo.id} is with ${convo.agentSlug}, not ${req.agent}.`);
+      callee = agents.getVersion(convo.agentSlug, convo.agentVersion) ?? agents.get(convo.agentSlug);
+      if (!callee) return fail(`The agent "${convo.agentSlug}" in this conversation no longer exists.`);
+    } else {
+      callee = agents.get(req.agent!);
+      if (!callee) return fail(`There is no agent "${req.agent}". ${contacts()}`);
+    }
+    if (callee.slug === caller.agent.slug) return fail("You cannot hold a conversation with yourself.");
+    if (caller.agent.talksTo?.length && !caller.agent.talksTo.includes(callee.slug)) {
+      return fail(`${caller.agent.name} is not set up to talk to ${callee.name}. ${contacts()}`);
+    }
+    if (link.chain.includes(callee.slug)) {
+      return fail(`${callee.name} is waiting for your reply in this chain of conversations, so it cannot take a new message now. Put what it needs in your reply instead.`);
+    }
+    if (link.chain.length >= MAX_CONVERSATION_DEPTH) {
+      return fail(`Conversations can go ${MAX_CONVERSATION_DEPTH} agents deep, and this one is already that deep. Do the work yourself, or say in your reply what is still needed.`);
+    }
+    if (convo && this.conversing.has(convo.id)) return fail(`${callee.name} is still answering an earlier message in conversation ${convo.id}. Wait for that reply before sending another.`);
+
+    let resolved: ResolvedModel;
+    try {
+      resolved = this.resolveModel(callee);
+    } catch (e) {
+      return fail((e as Error).message);
+    }
+    if (!convo) {
+      convo = sessions.createSession({
+        id: newId("sess"),
+        kind: "conversation",
+        agentSlug: callee.slug,
+        agentVersion: callee.version,
+        workspace: caller.session.workspace,
+        title: `${caller.agent.name} → ${callee.name}: ${req.message.replace(/\s+/g, " ").trim().slice(0, 60)}`,
+        parent: { sessionId: caller.session.id, agentSlug: caller.agent.slug, agentName: caller.agent.name },
+      });
+    }
+    const conversation = convo;
+    const agent = callee;
+    this.conversing.add(conversation.id);
+    const run = sessions.createRun(newId("run"), conversation.id);
+    sessions.updateRun(run.id, { status: "running", startedAt: nowIso() });
+    run.status = "running";
+
+    const progress = (line: string) => ctx.onProgress?.(`${line}\n`);
+    progress(`▸ ${agent.name} (conversation ${conversation.id})`);
+    let reply = "";
+    let error: string | undefined;
+    try {
+      const root = link.root;
+      const tools = toolsFor(agent.tools, this.extraTools());
+      const { connection, model, notice } = resolved;
+      this.emit(run, {
+        type: "run_started",
+        agent: { slug: agent.slug, version: agent.version },
+        model: { connectionId: connection.id, modelId: model.providerModelId, dialect: model.dialect, contextWindow: model.capabilities.maxContextTokens },
+      });
+      if (notice) this.emit(run, { type: "warning", message: notice });
+      const rootSession = sessions.getSession(root.session.id) ?? root.session;
+      const gen = runNativeEngine({
+        agent,
+        model,
+        adapter: adapterFor(model.dialect),
+        connection: adapterConnection(this.app, connection, model),
+        history: projectMessages(sessions.sessionEvents(conversation.id)),
+        userTurn: req.message,
+        tools,
+        // The user's session decides how much to ask, for every agent working on their behalf.
+        policy: this.sessionPolicy(root.session.id, agent, tools),
+        workspace: conversation.workspace,
+        signal: ctx.signal,
+        skills: this.app.skills.list(conversation.workspace),
+        prompt: {
+          project: loadProjectInstructions(conversation.workspace, this.app.config.home),
+          env: environmentFacts(conversation.workspace),
+          mode: rootSession.mode,
+          memories: this.app.memory.list(),
+          contacts: this.contactsFor(agent),
+          conversationWith: caller.agent.name,
+        },
+        host: createHost(this.app, agent, conversation.workspace),
+        onAllowRule: (rule) => sessions.addAllowRule(root.session.id, rule),
+        runSubagent: (r, c) => this.runSubagent(run, conversation, agent, r, c),
+        messageAgent: (r, c) => this.converse({ root, chain: [...link.chain, agent.slug], caller: { session: conversation, agent } }, r, c),
+        requestApproval: (callId, name, input) => this.relayApproval(root, run, agent, conversation, callId, name, input, ctx.signal),
+      });
+      for await (const body of gen) {
+        const ev = this.emit(run, body);
+        if (ev.type === "tool_call") progress(`  ${agent.name}: ${ev.name} ${briefInput(ev.input)}`);
+        else if (ev.type === "assistant_message") reply = textOf(ev.message) || reply;
+        else if (ev.type === "run_failed") error = ev.error.message;
+        else if (ev.type === "run_cancelled") error = "cancelled";
+        if (TERMINAL_EVENTS.has(ev.type)) {
+          const status = ev.type === "run_completed" ? "completed" : ev.type === "run_failed" ? "failed" : "cancelled";
+          sessions.updateRun(run.id, { status, endedAt: nowIso(), usage: "usage" in ev ? ev.usage : undefined, costUsd: "costUsd" in ev ? ev.costUsd : undefined, error });
+        }
+      }
+      sessions.touchSession(conversation.id);
+    } catch (e) {
+      error = (e as Error).message;
+      this.emit(run, { type: "run_failed", error: { kind: "unknown", message: error, retryable: false }, usage: { inputTokens: 0, outputTokens: 0 }, costUsd: 0 });
+      sessions.updateRun(run.id, { status: "failed", endedAt: nowIso(), error });
+    } finally {
+      this.conversing.delete(conversation.id);
+    }
+
+    const next = `To reply, call agent_message with conversation "${conversation.id}".`;
+    if (error) {
+      return fail(`${agent.name} could not answer (conversation ${conversation.id}): ${error}${reply ? `\n\nIts last message:\n${reply}` : ""}\n\n${next}`);
+    }
+    return { output: `${agent.name} replied (conversation ${conversation.id}):\n\n${reply || "(no reply text)"}\n\n${next}` };
+  }
+
+  /**
+   * An approval another agent needs, asked in the run the user is watching. The request names the
+   * agent and the conversation; the decision goes back to that agent.
+   */
+  private relayApproval(
+    root: ConversationLink["root"],
+    run: Run,
+    agent: AgentDefinition,
+    conversation: Session,
+    callId: string,
+    name: string,
+    input: unknown,
+    signal: AbortSignal,
+  ): Promise<ApprovalDecision> {
+    const { sessions } = this.app;
+    const relayId = `${run.id}.${callId}`;
+    return new Promise<ApprovalDecision>((resolve) => {
+      root.state.approvals.set(relayId, (d) => {
+        root.state.approvals.delete(relayId);
+        sessions.updateRun(run.id, { status: "running" });
+        if (!root.state.approvals.size) sessions.updateRun(root.run.id, { status: "running" });
+        this.emit(root.run, { type: "approval_resolved", callId: relayId, decision: d });
+        resolve(d);
+      });
+      sessions.updateRun(run.id, { status: "awaiting_approval" });
+      sessions.updateRun(root.run.id, { status: "awaiting_approval" });
+      this.emit(root.run, { type: "approval_requested", callId: relayId, name, input, via: { agent: agent.name, conversation: conversation.id } });
+      signal.addEventListener("abort", () => root.state.approvals.get(relayId)?.("deny"), { once: true });
+    });
   }
 
   approve(runId: string, callId: string, decision: ApprovalDecision): boolean {

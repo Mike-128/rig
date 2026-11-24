@@ -48,6 +48,8 @@ export const AgentDefinitionSchema = z.object({
   skills: z.array(z.string()).default([]),
   knowledge: z.array(KnowledgeSourceSchema).max(10).refine((sources) => new Set(sources.map((s) => s.name)).size === sources.length, "Knowledge source names must be unique").optional(),
   memory: z.boolean().optional(),
+  /** Agents (by slug) this one may hold conversations with through agent_message. Empty or absent: any saved agent. */
+  talksTo: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/, "Use agent slugs: lowercase letters, digits and dashes")).max(50).optional(),
   sandbox: z.union([z.literal(0), z.literal(1)]).default(1),
   approvals: z.array(ToolNameSchema).default([]),
   budget: z

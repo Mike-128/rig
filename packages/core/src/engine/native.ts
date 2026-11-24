@@ -52,6 +52,8 @@ export interface EngineInput {
   takeSteering?(): string[];
   /** Runs a sub-agent for the task tool. Absent inside a sub-agent, so nesting stops at one level. */
   runSubagent?: ToolContext["runSubagent"];
+  /** Carries agent_message conversations. Absent when the runtime does not offer them. */
+  messageAgent?: ToolContext["messageAgent"];
   /** Summarize the conversation and stop, instead of taking a turn. */
   compactOnly?: boolean;
   /** Compact when a request's input reaches this many tokens. Defaults to 80% of the context window. */
@@ -285,6 +287,7 @@ export async function* runNativeEngine(input: EngineInput): AsyncGenerator<RunEv
           enabledSkills: agent.skills,
           onProgress: (text) => push({ kind: "progress", callId: call.id, text }),
           runSubagent: input.runSubagent,
+          messageAgent: input.messageAgent,
         };
         spec
           .run(call.input, ctx)
