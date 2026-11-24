@@ -1,39 +1,12 @@
 import { useEffect, useState } from "react";
 import type { AgentSummary, Model, ModelAlias, SkillSummary } from "@rig/core/types";
-import { MANAGEMENT_TOOLS, slugify, type AgentDefinitionInput, type ValidationIssue } from "@rig/core/agent";
+import { slugify, type AgentDefinitionInput, type ValidationIssue } from "@rig/core/agent";
 import { api } from "../api";
+import { ToolPicker } from "../components/ToolPicker";
 import { STATUS_LABEL, testResult } from "../setup";
 import type { McpServerStatus } from "./Mcp";
 
 type ModelRow = Model & { connectionName: string };
-
-const WORKSPACE_TOOLS = ["file_read", "glob", "grep", "file_edit", "file_write", "shell", "web_fetch", "document_create", "todo_write", "task", "load_skill", "knowledge_read", "knowledge_search", "memory_read", "memory_write"] as const;
-
-const TOOL_HELP: Record<string, string> = {
-  knowledge_read: "Browse and read only the configured knowledge folders.",
-  knowledge_search: "Search nested knowledge files for literal text; read-only and bounded.",
-  memory_read: "Read memory from earlier sessions: personal and team memories, and this agent's notebook when persistent notes are on. Read-only.",
-  memory_write: "Save memory for future sessions, always with approval: personal at once, team through a pull request, or this agent's notebook. Needs sandbox 1.",
-  file_read: "Read files (with line numbers and ranges) and list directories inside the workspace. Read-only.",
-  glob: "Find files by name pattern. Read-only.",
-  grep: "Search file contents with a regular expression. Read-only.",
-  file_edit: "Edit files by exact string replacement. Needs sandbox 1.",
-  file_write: "Create or overwrite files inside the workspace. Needs sandbox 1.",
-  todo_write: "Keep a visible task list for multi-step work.",
-  task: "Delegate work to sub-agents with their own context, in parallel if needed.",
-  agent_message: "Hold conversations with other agents: ask, answer their questions, and follow up. Each conversation is saved and keeps its history.",
-  "mcp__*": "Every tool from every connected MCP server. Tools that are not read-only ask for approval.",
-  web_fetch: "Fetch a public http(s) URL as text. Read-only.",
-  document_create: "Create a Word document, web page, Markdown, or CSV file under outputs/ for the user to download. Never overwrites.",
-  shell: "Run a command in the workspace directory. Needs sandbox 1; the widest capability here.",
-  load_skill: "Read the full instructions for an attached skill. Added automatically when you attach one.",
-  agent_list: "List the agents saved in this rig.",
-  agent_read: "Read another agent's definition.",
-  agent_write: "Create or update agents. Gate this with approval.",
-  model_list: "See which models this rig can reach.",
-  skill_list: "List installed skills.",
-  skill_write: "Create or replace skills. Gate this with approval.",
-};
 
 interface Form {
   name: string;
@@ -301,15 +274,15 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
       .catch(() => {});
   }, []);
 
-  const toggle = (list: "tools" | "approvals" | "skills", name: string) =>
-    set(list, form[list].includes(name) ? form[list].filter((t) => t !== name) : [...form[list], name]);
-
   // Attaching a skill implies the agent needs load_skill to read it.
   const toggleSkill = (name: string) => {
     const has = form.skills.includes(name);
     const next = has ? form.skills.filter((s) => s !== name) : [...form.skills, name];
     setForm((f) => ({ ...f, skills: next, tools: next.length && !f.tools.includes("load_skill") ? [...f.tools, "load_skill"] : f.tools }));
   };
+
+  const toolCount = form.tools.length;
+  const askCount = form.approvals.filter((t) => form.tools.includes(t)).length;
 
   const connections = [...new Map(models.map((m) => [m.connectionId, m.connectionName])).entries()];
   // Agents name their provider; older definitions may hold its id instead.
@@ -564,108 +537,56 @@ export function AgentsPage({ initialSlug }: { initialSlug?: string }) {
           </div>
 
           <div className="card">
-            <h3>Tools and policy</h3>
-            <div className="field">
-              <span className="muted">Workspace tools</span>
-              <div className="checks">
-                {WORKSPACE_TOOLS.map((t) => (
-                  <label key={t} title={TOOL_HELP[t]}>
-                    <input type="checkbox" checked={form.tools.includes(t)} onChange={() => toggle("tools", t)} /> {t}
-                  </label>
-                ))}
+            <div className="card-head">
+              <div>
+                <h3>Tools and permissions</h3>
+                <p className="hint">What this agent can do, and what it has to ask you before doing it.</p>
               </div>
+              <span className="pill">
+                {toolCount} {toolCount === 1 ? "tool" : "tools"}, {askCount} {askCount === 1 ? "asks" : "ask"} first
+              </span>
             </div>
-            <div className="field">
-              <span className="muted">Other agents</span>
-              <div className="checks">
-                <label title={TOOL_HELP.agent_message}>
-                  <input
-                    type="checkbox"
-                    checked={form.tools.includes("agent_message")}
-                    onChange={() => toggle("tools", "agent_message")}
-                  />{" "}
-                  Talk to other agents (agent_message)
-                </label>
-              </div>
-              {form.tools.includes("agent_message") && (
-                <>
-                  <span className="hint">
-                    Which agents it can talk to. With none ticked, it can talk to any of them. Each conversation is saved, the other agent remembers it, and
-                    anything that agent needs approved is asked here, in this agent's session.
+            <ToolPicker
+              value={{ tools: form.tools, approvals: form.approvals, talksTo: form.talksTo }}
+              readOnly={form.sandbox === 0}
+              slug={form.slug}
+              agents={agents}
+              mcpServers={mcpServers}
+              onChange={(v) => setForm((f) => ({ ...f, ...v }))}
+            />
+
+            <h4 className="tool-group-title">Access</h4>
+            <div className="access-choice" role="radiogroup" aria-label="Access">
+              {([
+                [1, "Can change things", "Edit and write files and run commands in the workspace, as its tools allow."],
+                [0, "Read-only", "Never writes files or runs commands, whatever its tools."],
+              ] as const).map(([level, title, help]) => (
+                <label key={level} className={`access-option ${form.sandbox === level ? "on" : ""}`}>
+                  <input type="radio" name="sandbox" checked={form.sandbox === level} onChange={() => set("sandbox", level)} />
+                  <span>
+                    <span className="tool-label">{title}</span>
+                    <span className="tool-help">{help}</span>
                   </span>
-                  <div className="checks">
-                    {agents
-                      .filter((a) => a.slug !== form.slug)
-                      .map((a) => (
-                        <label key={a.slug} title={a.description}>
-                          <input
-                            type="checkbox"
-                            checked={form.talksTo.includes(a.slug)}
-                            onChange={() => setForm((f) => ({ ...f, talksTo: f.talksTo.includes(a.slug) ? f.talksTo.filter((s) => s !== a.slug) : [...f.talksTo, a.slug] }))}
-                          />{" "}
-                          {a.name}
-                        </label>
-                      ))}
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="field">
-              <span className="muted">MCP tools (servers are set up in Settings, MCP servers)</span>
-              <div className="checks">
-                <label title={TOOL_HELP["mcp__*"]}>
-                  <input type="checkbox" checked={form.tools.includes("mcp__*")} onChange={() => toggle("tools", "mcp__*")} /> all servers
                 </label>
-                {mcpServers.map((s) => (
-                  <label key={s.name} title={s.tools.map((t) => t.name).join(", ")}>
-                    <input type="checkbox" checked={form.tools.includes(`mcp__${s.name}__*`)} onChange={() => toggle("tools", `mcp__${s.name}__*`)} /> {s.name}
-                    {s.status !== "connected" && <span className="muted"> ({s.status})</span>}
-                  </label>
-                ))}
-              </div>
+              ))}
             </div>
-            <div className="field">
-              <span className="muted">Rig management tools — let this agent create and revise other agents and skills</span>
-              <div className="checks">
-                {MANAGEMENT_TOOLS.map((t) => (
-                  <label key={t} title={TOOL_HELP[t]}>
-                    <input type="checkbox" checked={form.tools.includes(t)} onChange={() => toggle("tools", t)} /> {t}
-                  </label>
-                ))}
-              </div>
-            </div>
-            <div className="field">
-              <span className="muted">Require approval before running</span>
-              <div className="checks">
-                {form.tools.filter((t) => !t.endsWith("*")).map((t) => (
-                  <label key={t}>
-                    <input type="checkbox" checked={form.approvals.includes(t)} onChange={() => toggle("approvals", t)} /> {t}
-                  </label>
-                ))}
-                {!form.tools.length && <span className="muted">no tools enabled</span>}
-              </div>
-            </div>
-            <div className="grid2">
+
+            <h4 className="tool-group-title">Limits for each run</h4>
+            <div className="limits">
               <label className="field">
-                <span>Sandbox level</span>
-                <select value={form.sandbox} onChange={(e) => set("sandbox", Number(e.target.value) as 0 | 1)}>
-                  <option value={0}>0: read-only, no process spawn</option>
-                  <option value={1}>1: workspace-jailed local subprocess</option>
-                </select>
-              </label>
-              <label className="field">
-                <span>Max turns per run</span>
+                <span>Steps</span>
                 <input type="number" min={1} max={200} value={form.maxTurns} onChange={(e) => set("maxTurns", Number(e.target.value))} />
               </label>
               <label className="field">
-                <span>Token budget per run (optional)</span>
-                <input value={form.tokens} onChange={(e) => set("tokens", e.target.value)} placeholder="e.g. 500000" />
+                <span>Tokens</span>
+                <input value={form.tokens} onChange={(e) => set("tokens", e.target.value)} placeholder="No limit" inputMode="numeric" />
               </label>
               <label className="field">
-                <span>Cost budget per run in USD (optional)</span>
-                <input value={form.usd} onChange={(e) => set("usd", e.target.value)} placeholder="e.g. 2" />
+                <span>Cost (USD)</span>
+                <input value={form.usd} onChange={(e) => set("usd", e.target.value)} placeholder="No limit" inputMode="decimal" />
               </label>
             </div>
+            <p className="hint">A run stops when it reaches any of these. A step is one model reply, with the tools it calls.</p>
           </div>
 
           {yaml && (
